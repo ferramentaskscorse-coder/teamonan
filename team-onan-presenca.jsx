@@ -165,9 +165,6 @@ export default function TeamOnanPresenca() {
               <div style={{ color: C.text }} className="font-bold text-lg tracking-tight">
                 Team Onan
               </div>
-              <div style={{ color: C.textFaint }} className="text-xs">
-                Registro de presença
-              </div>
             </div>
           </div>
           <label className="flex flex-col gap-1.5">
