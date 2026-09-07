@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Swords } from "lucide-react";
 import { C } from "../theme";
+import logo from "../assets/logo.jpg";
 
 const SHARED_PASSWORD = import.meta.env.VITE_APP_PASSWORD || "teamonan2026";
 
@@ -26,9 +26,7 @@ export default function Login({ onSuccess }) {
         className="w-full max-w-sm border rounded-md p-8 flex flex-col gap-5"
       >
         <div className="flex flex-col items-center gap-3 mb-2">
-          <div style={{ background: C.red }} className="w-12 h-12 rounded-full flex items-center justify-center">
-            <Swords size={22} color={C.text} />
-          </div>
+          <img src={logo} alt="Team Onan" className="w-16 h-16 rounded-full object-cover" style={{ border: `2px solid ${C.red}` }} />
           <div className="text-center">
             <div style={{ color: C.text }} className="font-bold text-lg tracking-tight">
               Team Onan

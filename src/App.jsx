@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
-import { Swords, LogOut, CalendarCheck, BarChart3, ClipboardList, Loader2 } from "lucide-react";
+import { LogOut, CalendarCheck, BarChart3, ClipboardList, Loader2 } from "lucide-react";
 import { db, ensureAnonymousAuth } from "./firebase";
 import { C } from "./theme";
 import { NavTab } from "./ui";
+import logo from "./assets/logo.jpg";
 import Login from "./pages/Login";
 import Presenca from "./pages/Presenca";
 import Dashboard from "./pages/Dashboard";
@@ -79,9 +80,7 @@ export default function App() {
     <div style={{ background: C.bg }} className="w-full min-h-screen flex flex-col">
       <div style={{ background: C.bgPanel, borderColor: C.line }} className="border-b flex items-center justify-between px-4 py-3 sm:px-6">
         <div className="flex items-center gap-2.5">
-          <div style={{ background: C.red }} className="w-8 h-8 rounded-full flex items-center justify-center shrink-0">
-            <Swords size={16} color={C.text} />
-          </div>
+          <img src={logo} alt="Team Onan" className="w-9 h-9 rounded-full object-cover shrink-0" style={{ border: `1.5px solid ${C.red}` }} />
           <div style={{ color: C.text }} className="font-bold tracking-tight text-sm sm:text-base">
             Team Onan
           </div>
