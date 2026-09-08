@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { C } from "../theme";
+import { C, GRAUS } from "../theme";
 import { Select, EmptyState, StatCard, SectionTitle, TaxaBar } from "../ui";
 
 export default function Dashboard({ units, students, classes, attendance }) {
@@ -64,6 +64,21 @@ export default function Dashboard({ units, students, classes, attendance }) {
       .sort((a, b) => b.taxa - a.taxa);
   }, [studentsInScope, units, scopeClasses, scopeClassIds, attendance]);
 
+  const alunosParaGrau = unitId ? alunos.filter((a) => a.unitId === unitId) : alunos;
+  const porGrau = useMemo(() => {
+    const counts = {};
+    GRAUS.forEach((g) => (counts[g] = 0));
+    let semGrau = 0;
+    alunosParaGrau.forEach((a) => {
+      if (a.grau && counts[a.grau] !== undefined) counts[a.grau]++;
+      else semGrau++;
+    });
+    const rows = GRAUS.map((g) => ({ grau: g, count: counts[g] }));
+    rows.push({ grau: "Sem grau definido", count: semGrau });
+    return rows;
+  }, [alunosParaGrau]);
+  const maxGrauCount = Math.max(1, ...porGrau.map((r) => r.count));
+
   function limparFiltros() {
     setMesAno("");
     setUnitId("");
@@ -71,9 +86,7 @@ export default function Dashboard({ units, students, classes, attendance }) {
     setStudentId("");
   }
 
-  if (classes.length === 0) {
-    return <EmptyState text="Ainda não há aulas registradas. Os números aparecem aqui assim que a primeira presença for marcada." />;
-  }
+  const noAulasYet = classes.length === 0;
 
   return (
     <div className="flex flex-col gap-6 max-w-4xl">
@@ -103,92 +116,129 @@ export default function Dashboard({ units, students, classes, attendance }) {
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Total de aulas" value={totalAulas} />
-        <StatCard label="Total de presenças" value={totalPresencas} />
-        <StatCard label="Média por aula" value={mediaPorAula} />
-      </div>
-
-      {porUnidade.length > 0 && (
-        <div>
-          <SectionTitle>Por unidade</SectionTitle>
-          <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md overflow-hidden">
+      <div>
+        <SectionTitle>Distribuição por grau{unitId ? ` — ${units.find((u) => u.id === unitId)?.name || ""}` : ""}</SectionTitle>
+        <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md overflow-hidden">
+          {alunosParaGrau.length === 0 ? (
+            <div style={{ color: C.textFaint }} className="text-sm px-4 py-6 text-center">
+              Nenhum aluno cadastrado nesse recorte.
+            </div>
+          ) : (
             <table className="w-full text-sm">
-              <thead>
-                <tr style={{ color: C.textFaint, borderColor: C.lineSoft }} className="border-b text-left text-xs">
-                  <th className="font-medium px-4 py-2">Unidade</th>
-                  <th className="font-medium px-4 py-2 text-right">Aulas</th>
-                  <th className="font-medium px-4 py-2 text-right">Presenças</th>
-                  <th className="font-medium px-4 py-2 text-right">Média/aula</th>
-                </tr>
-              </thead>
               <tbody>
-                {porUnidade.map((u) => (
-                  <tr key={u.id} style={{ borderColor: C.lineSoft }} className="border-b last:border-0">
-                    <td style={{ color: C.text }} className="px-4 py-2.5">
-                      {u.name}
+                {porGrau.map((r) => (
+                  <tr key={r.grau} style={{ borderColor: C.lineSoft }} className="border-b last:border-0">
+                    <td style={{ color: r.grau === "Sem grau definido" ? C.textFaint : C.text }} className="px-4 py-2 whitespace-nowrap">
+                      {r.grau}
                     </td>
-                    <td style={{ color: C.textDim }} className="px-4 py-2.5 text-right">
-                      {u.aulas}
+                    <td className="px-4 py-2 w-full">
+                      <div style={{ background: C.bgRaised }} className="h-2 rounded-full overflow-hidden">
+                        <div style={{ background: C.brass, width: `${(r.count / maxGrauCount) * 100}%` }} className="h-full" />
+                      </div>
                     </td>
-                    <td style={{ color: C.textDim }} className="px-4 py-2.5 text-right">
-                      {u.presencas}
-                    </td>
-                    <td style={{ color: C.brass }} className="px-4 py-2.5 text-right font-semibold">
-                      {u.media}
+                    <td style={{ color: C.textDim }} className="px-4 py-2 text-right font-semibold tabular-nums">
+                      {r.count}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          )}
         </div>
-      )}
+      </div>
 
-      <div>
-        <SectionTitle>Por aluno — taxa de frequência</SectionTitle>
-        <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md overflow-hidden">
-          {porAluno.length === 0 && (
-            <div style={{ color: C.textFaint }} className="text-sm px-4 py-6 text-center">
-              Nenhum aluno nesse recorte.
+      {noAulasYet ? (
+        <EmptyState text="Ainda não há aulas registradas. Os números de presença aparecem aqui assim que a primeira aula for marcada." />
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <StatCard label="Total de aulas" value={totalAulas} />
+            <StatCard label="Total de presenças" value={totalPresencas} />
+            <StatCard label="Média por aula" value={mediaPorAula} />
+          </div>
+
+          {porUnidade.length > 0 && (
+            <div>
+              <SectionTitle>Por unidade</SectionTitle>
+              <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ color: C.textFaint, borderColor: C.lineSoft }} className="border-b text-left text-xs">
+                      <th className="font-medium px-4 py-2">Unidade</th>
+                      <th className="font-medium px-4 py-2 text-right">Aulas</th>
+                      <th className="font-medium px-4 py-2 text-right">Presenças</th>
+                      <th className="font-medium px-4 py-2 text-right">Média/aula</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {porUnidade.map((u) => (
+                      <tr key={u.id} style={{ borderColor: C.lineSoft }} className="border-b last:border-0">
+                        <td style={{ color: C.text }} className="px-4 py-2.5">
+                          {u.name}
+                        </td>
+                        <td style={{ color: C.textDim }} className="px-4 py-2.5 text-right">
+                          {u.aulas}
+                        </td>
+                        <td style={{ color: C.textDim }} className="px-4 py-2.5 text-right">
+                          {u.presencas}
+                        </td>
+                        <td style={{ color: C.brass }} className="px-4 py-2.5 text-right font-semibold">
+                          {u.media}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
-          {porAluno.length > 0 && (
-            <table className="w-full text-sm">
-              <thead>
-                <tr style={{ color: C.textFaint, borderColor: C.lineSoft }} className="border-b text-left text-xs">
-                  <th className="font-medium px-4 py-2">Aluno</th>
-                  <th className="font-medium px-4 py-2">Unidade</th>
-                  <th className="font-medium px-4 py-2 text-right">Aulas oferecidas</th>
-                  <th className="font-medium px-4 py-2 text-right">Presenças</th>
-                  <th className="font-medium px-4 py-2 text-right">Taxa</th>
-                </tr>
-              </thead>
-              <tbody>
-                {porAluno.map((r) => (
-                  <tr key={r.id} style={{ borderColor: C.lineSoft }} className="border-b last:border-0">
-                    <td style={{ color: C.text }} className="px-4 py-2.5">
-                      {r.name}
-                    </td>
-                    <td style={{ color: C.textDim }} className="px-4 py-2.5">
-                      {r.unitName}
-                    </td>
-                    <td style={{ color: C.textDim }} className="px-4 py-2.5 text-right">
-                      {r.aulasOferecidas}
-                    </td>
-                    <td style={{ color: C.textDim }} className="px-4 py-2.5 text-right">
-                      {r.presencas}
-                    </td>
-                    <td className="px-4 py-2.5 text-right">
-                      <TaxaBar taxa={r.taxa} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
+
+          <div>
+            <SectionTitle>Por aluno — taxa de frequência</SectionTitle>
+            <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md overflow-hidden">
+              {porAluno.length === 0 && (
+                <div style={{ color: C.textFaint }} className="text-sm px-4 py-6 text-center">
+                  Nenhum aluno nesse recorte.
+                </div>
+              )}
+              {porAluno.length > 0 && (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr style={{ color: C.textFaint, borderColor: C.lineSoft }} className="border-b text-left text-xs">
+                      <th className="font-medium px-4 py-2">Aluno</th>
+                      <th className="font-medium px-4 py-2">Unidade</th>
+                      <th className="font-medium px-4 py-2 text-right">Aulas oferecidas</th>
+                      <th className="font-medium px-4 py-2 text-right">Presenças</th>
+                      <th className="font-medium px-4 py-2 text-right">Taxa</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {porAluno.map((r) => (
+                      <tr key={r.id} style={{ borderColor: C.lineSoft }} className="border-b last:border-0">
+                        <td style={{ color: C.text }} className="px-4 py-2.5">
+                          {r.name}
+                        </td>
+                        <td style={{ color: C.textDim }} className="px-4 py-2.5">
+                          {r.unitName}
+                        </td>
+                        <td style={{ color: C.textDim }} className="px-4 py-2.5 text-right">
+                          {r.aulasOferecidas}
+                        </td>
+                        <td style={{ color: C.textDim }} className="px-4 py-2.5 text-right">
+                          {r.presencas}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          <TaxaBar taxa={r.taxa} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

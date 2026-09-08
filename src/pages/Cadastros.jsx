@@ -171,15 +171,14 @@ function PeopleList({ units, students }) {
   async function handleSubmit(e) {
     e.preventDefault();
     if (busy) return;
-    if (!form.name.trim() || !form.cpf.trim()) {
-      setFormError("Preencha nome e CPF.");
+    if (!form.name.trim()) {
+      setFormError("Preencha o nome.");
       return;
     }
-    if (!isProfessor && (!form.unitId || !form.periodo || !form.grau)) {
+    if (!isProfessor && (!form.unitId || !form.periodo)) {
       const faltando = [];
       if (!form.unitId) faltando.push("unidade");
       if (!form.periodo) faltando.push("período");
-      if (!form.grau) faltando.push("grau");
       setFormError(`Para aluno, falta preencher: ${faltando.join(", ")}.`);
       return;
     }
@@ -262,13 +261,13 @@ function PeopleList({ units, students }) {
           <Select
             value={form.grau}
             onChange={(v) => setField("grau", v)}
-            placeholder={isProfessor ? "Grau (opcional)" : "Grau"}
+            placeholder="Grau (ainda não definido)"
             options={GRAUS.map((g) => ({ value: g, label: g }))}
           />
         </div>
         {isProfessor && (
           <div style={{ color: C.textFaint }} className="text-xs -mt-1">
-            Professor não precisa de unidade, período ou grau — preencha só se fizer sentido.
+            Professor não precisa de unidade ou período — preencha só se fizer sentido.
           </div>
         )}
         {formError && (
