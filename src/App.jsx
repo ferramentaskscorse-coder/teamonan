@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
-import { LogOut, CalendarCheck, BarChart3, ClipboardList, Loader2 } from "lucide-react";
+import { LogOut, CalendarCheck, BarChart3, ClipboardList, Loader2, RefreshCw } from "lucide-react";
 import { db, ensureAnonymousAuth } from "./firebase";
 import { C } from "./theme";
 import { NavTab } from "./ui";
@@ -21,11 +21,12 @@ function watch(name, setter) {
 export default function App() {
   const [booted, setBooted] = useState(false);
   const [connError, setConnError] = useState("");
-  const [authed, setAuthed] = useState(false);
+  // Login persiste na aba (sessionStorage) — assim, dar F5 não te joga de
+  // volta pra tela de senha. Fechar a aba/navegador aí sim exige login de novo.
+  const [authed, setAuthed] = useState(() => sessionStorage.getItem("onan-authed") === "true");
   const [page, setPage] = useState("presenca");
 
   const [units, setUnits] = useState([]);
-  const [teachers, setTeachers] = useState([]);
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
   const [attendance, setAttendance] = useState([]);
@@ -36,7 +37,6 @@ export default function App() {
       .then(() => {
         unsubs = [
           watch("units", setUnits),
-          watch("teachers", setTeachers),
           watch("students", setStudents),
           watch("classes", setClasses),
           watch("attendance", setAttendance),
@@ -52,6 +52,16 @@ export default function App() {
       });
     return () => unsubs.forEach((u) => u());
   }, []);
+
+  function handleLoginSuccess() {
+    sessionStorage.setItem("onan-authed", "true");
+    setAuthed(true);
+  }
+
+  function handleLogout() {
+    sessionStorage.removeItem("onan-authed");
+    setAuthed(false);
+  }
 
   if (!booted) {
     return (
@@ -73,7 +83,7 @@ export default function App() {
   }
 
   if (!authed) {
-    return <Login onSuccess={() => setAuthed(true)} />;
+    return <Login onSuccess={handleLoginSuccess} />;
   }
 
   return (
@@ -85,10 +95,16 @@ export default function App() {
             Team Onan
           </div>
         </div>
-        <button onClick={() => setAuthed(false)} style={{ color: C.textDim }} className="flex items-center gap-1.5 text-xs hover:opacity-80">
-          <LogOut size={14} />
-          Sair
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => window.location.reload()} title="Atualizar" style={{ color: C.textDim }} className="flex items-center gap-1.5 text-xs hover:opacity-80">
+            <RefreshCw size={14} />
+            Atualizar
+          </button>
+          <button onClick={handleLogout} style={{ color: C.textDim }} className="flex items-center gap-1.5 text-xs hover:opacity-80">
+            <LogOut size={14} />
+            Sair
+          </button>
+        </div>
       </div>
 
       <div style={{ borderColor: C.line }} className="border-b flex px-2 sm:px-6">
@@ -104,9 +120,9 @@ export default function App() {
       </div>
 
       <div className="flex-1 p-4 sm:p-6">
-        {page === "presenca" && <Presenca units={units} teachers={teachers} students={students} classes={classes} attendance={attendance} />}
-        {page === "dashboard" && <Dashboard units={units} teachers={teachers} students={students} classes={classes} attendance={attendance} />}
-        {page === "cadastros" && <Cadastros units={units} teachers={teachers} students={students} />}
+        {page === "presenca" && <Presenca units={units} students={students} classes={classes} attendance={attendance} />}
+        {page === "dashboard" && <Dashboard units={units} students={students} classes={classes} attendance={attendance} />}
+        {page === "cadastros" && <Cadastros units={units} students={students} />}
       </div>
     </div>
   );

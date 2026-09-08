@@ -2,18 +2,19 @@ import { useState, useMemo } from "react";
 import { C } from "../theme";
 import { Select, EmptyState, StatCard, SectionTitle, TaxaBar } from "../ui";
 
-export default function Dashboard({ units, teachers, students, classes, attendance }) {
+export default function Dashboard({ units, students, classes, attendance }) {
   const [mesAno, setMesAno] = useState("");
   const [unitId, setUnitId] = useState("");
   const [teacherId, setTeacherId] = useState("");
   const [studentId, setStudentId] = useState("");
 
+  const professores = students.filter((s) => s.tipo === "professor");
+  const alunos = students.filter((s) => s.tipo !== "professor");
+
   const hasFilters = mesAno || unitId || teacherId || studentId;
 
-  // alunos disponíveis no seletor: se uma unidade estiver escolhida, mostra só os dela
-  const studentOptions = unitId ? students.filter((s) => s.unitId === unitId) : students;
+  const studentOptions = unitId ? alunos.filter((s) => s.unitId === unitId) : alunos;
 
-  // aulas dentro do recorte de data / unidade / professor
   const scopeClasses = classes.filter(
     (c) =>
       (!mesAno || c.date.slice(0, 7) === mesAno) &&
@@ -22,7 +23,6 @@ export default function Dashboard({ units, teachers, students, classes, attendan
   );
   const scopeClassIds = new Set(scopeClasses.map((c) => c.id));
 
-  // presenças dentro desse recorte, e do aluno se selecionado
   const scopeAttendance = attendance.filter((a) => scopeClassIds.has(a.classId) && (!studentId || a.studentId === studentId));
 
   const totalAulas = scopeClasses.length;
@@ -45,7 +45,7 @@ export default function Dashboard({ units, teachers, students, classes, attendan
     });
   }, [unitsInScope, scopeClasses, scopeAttendance]);
 
-  const studentsInScope = studentId ? students.filter((s) => s.id === studentId) : students.filter((s) => !unitId || s.unitId === unitId);
+  const studentsInScope = studentId ? alunos.filter((s) => s.id === studentId) : alunos.filter((s) => !unitId || s.unitId === unitId);
   const porAluno = useMemo(() => {
     return studentsInScope
       .map((s) => {
@@ -91,7 +91,7 @@ export default function Dashboard({ units, teachers, students, classes, attendan
           <Select value={unitId} onChange={setUnitId} placeholder="Todas as unidades" options={units.map((u) => ({ value: u.id, label: u.name }))} />
         </div>
         <div className="col-span-2 sm:col-span-1">
-          <Select value={teacherId} onChange={setTeacherId} placeholder="Todos os professores" options={teachers.map((t) => ({ value: t.id, label: t.name }))} />
+          <Select value={teacherId} onChange={setTeacherId} placeholder="Todos os professores" options={professores.map((t) => ({ value: t.id, label: t.name }))} />
         </div>
         <div className="col-span-2 sm:col-span-1">
           <Select value={studentId} onChange={setStudentId} placeholder="Todos os alunos" options={studentOptions.map((s) => ({ value: s.id, label: s.name }))} />

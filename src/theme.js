@@ -18,6 +18,18 @@ export const C = {
 
 export const PERIODS = ["Manhã", "Tarde", "Noite"];
 
+export const GRAUS = [
+  "Branco",
+  "Branco ponta vermelho",
+  "Vermelho",
+  "Vermelho ponta azul claro",
+  "Azul claro",
+  "Azul claro ponta azul escuro",
+  "Azul escuro",
+  "Azul escuro ponta preto",
+  "Preto",
+];
+
 export function todayISO() {
   const d = new Date();
   return d.toISOString().slice(0, 10);
