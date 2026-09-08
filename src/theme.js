@@ -16,7 +16,7 @@ export const C = {
   brass: "#BB8C43",
 };
 
-export const PERIODS = ["Manhã", "Noite"];
+export const PERIODS = ["Manhã", "Tarde", "Noite"];
 
 export function todayISO() {
   const d = new Date();

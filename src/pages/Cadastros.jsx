@@ -2,7 +2,7 @@ import { useState } from "react";
 import { collection, addDoc, deleteDoc, doc } from "firebase/firestore";
 import { Plus, Trash2 } from "lucide-react";
 import { db } from "../firebase";
-import { C } from "../theme";
+import { C, PERIODS } from "../theme";
 import { Select } from "../ui";
 
 export default function Cadastros({ units, teachers, students }) {
@@ -105,13 +105,15 @@ function SimpleList({ items, collectionName, onAdd, placeholder }) {
 function StudentList({ units, students }) {
   const [name, setName] = useState("");
   const [unitId, setUnitId] = useState("");
+  const [periodo, setPeriodo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [periodoFilter, setPeriodoFilter] = useState("");
 
   async function handleAdd(e) {
     e.preventDefault();
-    if (!name.trim() || !unitId || busy) return;
+    if (!name.trim() || !unitId || !periodo || busy) return;
     setBusy(true);
-    await addDoc(collection(db, "students"), { name: name.trim(), unitId });
+    await addDoc(collection(db, "students"), { name: name.trim(), unitId, periodo });
     setName("");
     setBusy(false);
   }
@@ -120,9 +122,11 @@ function StudentList({ units, students }) {
     await deleteDoc(doc(db, "students", id));
   }
 
+  const filteredStudents = periodoFilter ? students.filter((s) => s.periodo === periodoFilter) : students;
+
   return (
     <div className="flex flex-col gap-3">
-      <form onSubmit={handleAdd} className="grid grid-cols-3 gap-2">
+      <form onSubmit={handleAdd} className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -130,14 +134,13 @@ function StudentList({ units, students }) {
           style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
           className="border rounded-md px-3 py-2 text-sm outline-none col-span-2"
         />
-        <div className="col-span-1">
-          <Select value={unitId} onChange={setUnitId} placeholder="Unidade" options={units.map((u) => ({ value: u.id, label: u.name }))} />
-        </div>
+        <Select value={unitId} onChange={setUnitId} placeholder="Unidade" options={units.map((u) => ({ value: u.id, label: u.name }))} />
+        <Select value={periodo} onChange={setPeriodo} placeholder="Período" options={PERIODS.map((p) => ({ value: p, label: p }))} />
         <button
           type="submit"
           disabled={busy}
           style={{ background: C.red, color: C.text }}
-          className="rounded-md px-3 py-2 flex items-center justify-center gap-1.5 text-sm font-medium col-span-3 sm:col-span-1 disabled:opacity-60"
+          className="rounded-md px-3 py-2 flex items-center justify-center gap-1.5 text-sm font-medium col-span-2 sm:col-span-4 disabled:opacity-60"
         >
           <Plus size={16} />
           Adicionar aluno
@@ -148,13 +151,23 @@ function StudentList({ units, students }) {
           Cadastre uma unidade antes de adicionar alunos.
         </div>
       )}
+
+      <div className="w-48">
+        <Select
+          value={periodoFilter}
+          onChange={setPeriodoFilter}
+          placeholder="Todos os períodos"
+          options={PERIODS.map((p) => ({ value: p, label: p }))}
+        />
+      </div>
+
       <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md overflow-hidden">
-        {students.length === 0 && (
+        {filteredStudents.length === 0 && (
           <div style={{ color: C.textFaint }} className="text-sm px-4 py-6 text-center">
-            Nenhum aluno cadastrado ainda.
+            {students.length === 0 ? "Nenhum aluno cadastrado ainda." : "Nenhum aluno nesse período."}
           </div>
         )}
-        {students.map((s) => (
+        {filteredStudents.map((s) => (
           <div key={s.id} style={{ borderColor: C.lineSoft }} className="border-b last:border-0 flex items-center justify-between px-4 py-2.5">
             <div>
               <div style={{ color: C.text }} className="text-sm">
@@ -162,6 +175,7 @@ function StudentList({ units, students }) {
               </div>
               <div style={{ color: C.textFaint }} className="text-xs">
                 {units.find((u) => u.id === s.unitId)?.name || "sem unidade"}
+                {s.periodo ? ` · ${s.periodo}` : ""}
               </div>
             </div>
             <button onClick={() => handleRemove(s.id)} style={{ color: C.textFaint }}>
