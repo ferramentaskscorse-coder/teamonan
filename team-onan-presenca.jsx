@@ -823,8 +823,8 @@ function CadastrosPage({ units, setUnits, teachers, setTeachers, students, setSt
     setTeachers(next);
     persistCadastros(units, next, students);
   }
-  function addStudent(name, unitId, periodo) {
-    const next = [...students, { id: uid(), name, unitId, periodo }];
+  function addStudent(name, cpf, unitId, periodo) {
+    const next = [...students, { id: uid(), name, cpf, unitId, periodo }];
     setStudents(next);
     persistCadastros(units, teachers, next);
   }
@@ -936,46 +936,54 @@ function SimpleList({ items, onAdd, onRemove, placeholder }) {
 
 function StudentList({ units, students, onAdd, onRemove }) {
   const [name, setName] = useState("");
+  const [cpf, setCpf] = useState("");
   const [unitId, setUnitId] = useState("");
   const [periodo, setPeriodo] = useState("");
-  const [periodoFilter, setPeriodoFilter] = useState("");
-
-  const filteredStudents = periodoFilter ? students.filter((s) => s.periodo === periodoFilter) : students;
 
   return (
     <div className="flex flex-col gap-3">
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (!name.trim() || !unitId || !periodo) return;
-          onAdd(name.trim(), unitId, periodo);
+          if (!name.trim() || !cpf.trim() || !unitId || !periodo) return;
+          onAdd(name.trim(), cpf.trim(), unitId, periodo);
           setName("");
+          setCpf("");
         }}
-        className="grid grid-cols-2 sm:grid-cols-4 gap-2"
+        className="flex flex-col gap-2"
       >
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Nome do aluno"
-          style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
-          className="border rounded-md px-3 py-2 text-sm outline-none col-span-2"
-        />
-        <Select
-          value={unitId}
-          onChange={setUnitId}
-          placeholder="Unidade"
-          options={units.map((u) => ({ value: u.id, label: u.name }))}
-        />
-        <Select
-          value={periodo}
-          onChange={setPeriodo}
-          placeholder="Período"
-          options={PERIODS.map((p) => ({ value: p, label: p }))}
-        />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Nome do aluno"
+            style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+            className="border rounded-md px-3 py-2 text-sm outline-none"
+          />
+          <input
+            value={cpf}
+            onChange={(e) => setCpf(e.target.value)}
+            placeholder="CPF"
+            style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+            className="border rounded-md px-3 py-2 text-sm outline-none"
+          />
+          <Select
+            value={unitId}
+            onChange={setUnitId}
+            placeholder="Unidade"
+            options={units.map((u) => ({ value: u.id, label: u.name }))}
+          />
+          <Select
+            value={periodo}
+            onChange={setPeriodo}
+            placeholder="Período"
+            options={PERIODS.map((p) => ({ value: p, label: p }))}
+          />
+        </div>
         <button
           type="submit"
           style={{ background: C.red, color: C.text }}
-          className="rounded-md px-3 py-2 flex items-center justify-center gap-1.5 text-sm font-medium col-span-2 sm:col-span-4"
+          className="rounded-md px-3 py-2 flex items-center justify-center gap-1.5 text-sm font-medium"
         >
           <Plus size={16} />
           Adicionar aluno
@@ -986,21 +994,13 @@ function StudentList({ units, students, onAdd, onRemove }) {
           Cadastre uma unidade antes de adicionar alunos.
         </div>
       )}
-      <div className="w-48">
-        <Select
-          value={periodoFilter}
-          onChange={setPeriodoFilter}
-          placeholder="Todos os períodos"
-          options={PERIODS.map((p) => ({ value: p, label: p }))}
-        />
-      </div>
       <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md overflow-hidden">
-        {filteredStudents.length === 0 && (
+        {students.length === 0 && (
           <div style={{ color: C.textFaint }} className="text-sm px-4 py-6 text-center">
-            {students.length === 0 ? "Nenhum aluno cadastrado ainda." : "Nenhum aluno nesse período."}
+            Nenhum aluno cadastrado ainda.
           </div>
         )}
-        {filteredStudents.map((s) => (
+        {students.map((s) => (
           <div
             key={s.id}
             style={{ borderColor: C.lineSoft }}
@@ -1013,8 +1013,10 @@ function StudentList({ units, students, onAdd, onRemove }) {
               <div style={{ color: C.textFaint }} className="text-xs">
                 {units.find((u) => u.id === s.unitId)?.name || "sem unidade"}
                 {s.periodo ? ` · ${s.periodo}` : ""}
+                {s.cpf ? ` · ${s.cpf}` : ""}
               </div>
             </div>
+
             <button onClick={() => onRemove(s.id)} style={{ color: C.textFaint }}>
               <Trash2 size={15} />
             </button>

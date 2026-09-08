@@ -104,17 +104,18 @@ function SimpleList({ items, collectionName, onAdd, placeholder }) {
 
 function StudentList({ units, students }) {
   const [name, setName] = useState("");
+  const [cpf, setCpf] = useState("");
   const [unitId, setUnitId] = useState("");
   const [periodo, setPeriodo] = useState("");
   const [busy, setBusy] = useState(false);
-  const [periodoFilter, setPeriodoFilter] = useState("");
 
   async function handleAdd(e) {
     e.preventDefault();
-    if (!name.trim() || !unitId || !periodo || busy) return;
+    if (!name.trim() || !cpf.trim() || !unitId || !periodo || busy) return;
     setBusy(true);
-    await addDoc(collection(db, "students"), { name: name.trim(), unitId, periodo });
+    await addDoc(collection(db, "students"), { name: name.trim(), cpf: cpf.trim(), unitId, periodo });
     setName("");
+    setCpf("");
     setBusy(false);
   }
 
@@ -122,25 +123,32 @@ function StudentList({ units, students }) {
     await deleteDoc(doc(db, "students", id));
   }
 
-  const filteredStudents = periodoFilter ? students.filter((s) => s.periodo === periodoFilter) : students;
-
   return (
     <div className="flex flex-col gap-3">
-      <form onSubmit={handleAdd} className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Nome do aluno"
-          style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
-          className="border rounded-md px-3 py-2 text-sm outline-none col-span-2"
-        />
-        <Select value={unitId} onChange={setUnitId} placeholder="Unidade" options={units.map((u) => ({ value: u.id, label: u.name }))} />
-        <Select value={periodo} onChange={setPeriodo} placeholder="Período" options={PERIODS.map((p) => ({ value: p, label: p }))} />
+      <form onSubmit={handleAdd} className="flex flex-col gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Nome do aluno"
+            style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+            className="border rounded-md px-3 py-2 text-sm outline-none"
+          />
+          <input
+            value={cpf}
+            onChange={(e) => setCpf(e.target.value)}
+            placeholder="CPF"
+            style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+            className="border rounded-md px-3 py-2 text-sm outline-none"
+          />
+          <Select value={unitId} onChange={setUnitId} placeholder="Unidade" options={units.map((u) => ({ value: u.id, label: u.name }))} />
+          <Select value={periodo} onChange={setPeriodo} placeholder="Período" options={PERIODS.map((p) => ({ value: p, label: p }))} />
+        </div>
         <button
           type="submit"
           disabled={busy}
           style={{ background: C.red, color: C.text }}
-          className="rounded-md px-3 py-2 flex items-center justify-center gap-1.5 text-sm font-medium col-span-2 sm:col-span-4 disabled:opacity-60"
+          className="rounded-md px-3 py-2 flex items-center justify-center gap-1.5 text-sm font-medium disabled:opacity-60"
         >
           <Plus size={16} />
           Adicionar aluno
@@ -152,22 +160,13 @@ function StudentList({ units, students }) {
         </div>
       )}
 
-      <div className="w-48">
-        <Select
-          value={periodoFilter}
-          onChange={setPeriodoFilter}
-          placeholder="Todos os períodos"
-          options={PERIODS.map((p) => ({ value: p, label: p }))}
-        />
-      </div>
-
       <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md overflow-hidden">
-        {filteredStudents.length === 0 && (
+        {students.length === 0 && (
           <div style={{ color: C.textFaint }} className="text-sm px-4 py-6 text-center">
-            {students.length === 0 ? "Nenhum aluno cadastrado ainda." : "Nenhum aluno nesse período."}
+            Nenhum aluno cadastrado ainda.
           </div>
         )}
-        {filteredStudents.map((s) => (
+        {students.map((s) => (
           <div key={s.id} style={{ borderColor: C.lineSoft }} className="border-b last:border-0 flex items-center justify-between px-4 py-2.5">
             <div>
               <div style={{ color: C.text }} className="text-sm">
@@ -176,6 +175,7 @@ function StudentList({ units, students }) {
               <div style={{ color: C.textFaint }} className="text-xs">
                 {units.find((u) => u.id === s.unitId)?.name || "sem unidade"}
                 {s.periodo ? ` · ${s.periodo}` : ""}
+                {s.cpf ? ` · ${s.cpf}` : ""}
               </div>
             </div>
             <button onClick={() => handleRemove(s.id)} style={{ color: C.textFaint }}>
