@@ -106,7 +106,7 @@ function SimpleList({ items, collectionName, onAdd, placeholder, allowEdit }) {
             Nada cadastrado ainda.
           </div>
         )}
-        {items.map((it) => (
+        {[...items].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")).map((it) => (
           <div key={it.id} style={{ borderColor: C.lineSoft }} className="border-b last:border-0 flex items-center justify-between px-4 py-2.5 gap-2">
             {editingId === it.id ? (
               <>
@@ -153,23 +153,38 @@ function PeopleList({ units, students }) {
   const [editingId, setEditingId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [formError, setFormError] = useState("");
 
   const isProfessor = form.tipo === "professor";
 
   function setField(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+    setFormError("");
   }
 
   function resetForm() {
     setForm(EMPTY_FORM);
     setEditingId(null);
+    setFormError("");
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.name.trim() || !form.cpf.trim() || busy) return;
-    if (!isProfessor && (!form.unitId || !form.periodo || !form.grau)) return;
+    if (busy) return;
+    if (!form.name.trim() || !form.cpf.trim()) {
+      setFormError("Preencha nome e CPF.");
+      return;
+    }
+    if (!isProfessor && (!form.unitId || !form.periodo || !form.grau)) {
+      const faltando = [];
+      if (!form.unitId) faltando.push("unidade");
+      if (!form.periodo) faltando.push("período");
+      if (!form.grau) faltando.push("grau");
+      setFormError(`Para aluno, falta preencher: ${faltando.join(", ")}.`);
+      return;
+    }
 
+    setFormError("");
     setBusy(true);
     const payload = {
       name: form.name.trim(),
@@ -198,6 +213,7 @@ function PeopleList({ units, students }) {
       grau: s.grau || "",
     });
     setEditingId(s.id);
+    setFormError("");
   }
 
   async function handleRemove(id) {
@@ -255,6 +271,11 @@ function PeopleList({ units, students }) {
             Professor não precisa de unidade, período ou grau — preencha só se fizer sentido.
           </div>
         )}
+        {formError && (
+          <div style={{ color: C.red }} className="text-xs -mt-1">
+            {formError}
+          </div>
+        )}
 
         <div className="flex flex-col sm:flex-row gap-2">
           <button
@@ -291,7 +312,7 @@ function PeopleList({ units, students }) {
             Nada cadastrado ainda.
           </div>
         )}
-        {students.map((s) => (
+        {[...students].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")).map((s) => (
           <div key={s.id} style={{ borderColor: C.lineSoft }} className="border-b last:border-0 flex items-center justify-between px-4 py-2.5 gap-2">
             <div className="min-w-0">
               <div style={{ color: C.text }} className="text-sm truncate">
