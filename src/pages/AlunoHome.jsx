@@ -13,6 +13,8 @@ export default function AlunoHome({ onBack }) {
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
   const [attendance, setAttendance] = useState([]);
+  const [waitedTooLong, setWaitedTooLong] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     const unsubs = [
@@ -24,6 +26,11 @@ export default function AlunoHome({ onBack }) {
     return () => unsubs.forEach((u) => u());
   }, []);
 
+  useEffect(() => {
+    const t = setTimeout(() => setWaitedTooLong(true), 6000);
+    return () => clearTimeout(t);
+  }, []);
+
   const me = students.find((s) => s.uid === uid);
   const professores = students.filter((s) => s.tipo === "professor");
 
@@ -32,11 +39,37 @@ export default function AlunoHome({ onBack }) {
     onBack();
   }
 
+  async function handleCreateNow() {
+    setCreating(true);
+    try {
+      await addDoc(collection(db, "students"), { uid, name: "", cpf: "", tipo: "aluno", unitId: "", periodo: "", grau: "" });
+    } catch (e) {
+      // se falhar aqui também, é problema de permissão no banco — a pessoa
+      // ainda tem a opção de sair e pedir ajuda para a equipe
+    }
+    setCreating(false);
+  }
+
   if (!me) {
     return (
       <div style={{ background: C.bg, color: C.textDim }} className="w-full min-h-screen flex flex-col items-center justify-center gap-3 text-sm px-6 text-center">
         <Loader2 className="animate-spin" size={18} />
         Carregando seu cadastro...
+        {waitedTooLong && (
+          <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md p-4 max-w-xs mt-2 flex flex-col gap-3">
+            <div style={{ color: C.text }} className="text-sm">
+              Está demorando mais que o esperado. Isso pode acontecer se o cadastro não terminou de salvar.
+            </div>
+            <button
+              onClick={handleCreateNow}
+              disabled={creating}
+              style={{ background: C.red, color: C.text }}
+              className="rounded-md py-2 text-sm font-semibold disabled:opacity-60"
+            >
+              {creating ? "Criando..." : "Criar meu cadastro agora"}
+            </button>
+          </div>
+        )}
         <button onClick={handleLogout} style={{ color: C.textFaint }} className="text-xs underline underline-offset-2 mt-4">
           Sair
         </button>

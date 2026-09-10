@@ -115,8 +115,8 @@ export default function AlunoAuth({ onBack }) {
           // se não conseguir (ex: e-mail já usado em outra conta), segue com o sintético
         }
       }
-      await setCpfIndex(signupCpf, authEmail, uid);
 
+      // O CADASTRO EM SI vem primeiro — é o que faz a tela sair de "carregando".
       // tenta encontrar um cadastro já existente (feito pela equipe) com o mesmo CPF
       const cpfDigits = normalizeCpf(signupCpf);
       const snap = await getDocs(collection(db, "students"));
@@ -135,6 +135,15 @@ export default function AlunoAuth({ onBack }) {
         await updateDoc(doc(db, "students", existing.id), payload);
       } else {
         await addDoc(collection(db, "students"), { ...payload, grau: "" });
+      }
+
+      // Índice CPF -> e-mail (usado só para login/recuperação de senha). Se
+      // isso falhar por algum motivo, não pode derrubar o cadastro que já
+      // foi criado com sucesso acima — por isso fica isolado num try próprio.
+      try {
+        await setCpfIndex(signupCpf, authEmail, uid);
+      } catch (e) {
+        console.error("Falha ao salvar cpfIndex (login por CPF pode não funcionar ainda):", e);
       }
     } catch (err) {
       if (err.code === "auth/email-already-in-use") {
