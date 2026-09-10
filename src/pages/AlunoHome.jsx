@@ -13,22 +13,19 @@ export default function AlunoHome({ onBack }) {
   const [students, setStudents] = useState([]);
   const [classes, setClasses] = useState([]);
   const [attendance, setAttendance] = useState([]);
-  const [waitedTooLong, setWaitedTooLong] = useState(false);
-  const [creating, setCreating] = useState(false);
+  const [studentsLoaded, setStudentsLoaded] = useState(false);
 
   useEffect(() => {
     const unsubs = [
       onSnapshot(collection(db, "units"), (s) => setUnits(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
-      onSnapshot(collection(db, "students"), (s) => setStudents(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
+      onSnapshot(collection(db, "students"), (s) => {
+        setStudents(s.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setStudentsLoaded(true);
+      }),
       onSnapshot(collection(db, "classes"), (s) => setClasses(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
       onSnapshot(collection(db, "attendance"), (s) => setAttendance(s.docs.map((d) => ({ id: d.id, ...d.data() })))),
     ];
     return () => unsubs.forEach((u) => u());
-  }, []);
-
-  useEffect(() => {
-    const t = setTimeout(() => setWaitedTooLong(true), 6000);
-    return () => clearTimeout(t);
   }, []);
 
   const me = students.find((s) => s.uid === uid);
@@ -39,42 +36,20 @@ export default function AlunoHome({ onBack }) {
     onBack();
   }
 
-  async function handleCreateNow() {
-    setCreating(true);
-    try {
-      await addDoc(collection(db, "students"), { uid, name: "", cpf: "", tipo: "aluno", unitId: "", periodo: "", grau: "" });
-    } catch (e) {
-      // se falhar aqui também, é problema de permissão no banco — a pessoa
-      // ainda tem a opção de sair e pedir ajuda para a equipe
-    }
-    setCreating(false);
-  }
-
-  if (!me) {
+  // Ainda carregando os dados pela primeira vez — normal, deve ser rápido.
+  if (!studentsLoaded) {
     return (
-      <div style={{ background: C.bg, color: C.textDim }} className="w-full min-h-screen flex flex-col items-center justify-center gap-3 text-sm px-6 text-center">
+      <div style={{ background: C.bg, color: C.textDim }} className="w-full min-h-screen flex items-center justify-center gap-2 text-sm">
         <Loader2 className="animate-spin" size={18} />
-        Carregando seu cadastro...
-        {waitedTooLong && (
-          <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md p-4 max-w-xs mt-2 flex flex-col gap-3">
-            <div style={{ color: C.text }} className="text-sm">
-              Está demorando mais que o esperado. Isso pode acontecer se o cadastro não terminou de salvar.
-            </div>
-            <button
-              onClick={handleCreateNow}
-              disabled={creating}
-              style={{ background: C.red, color: C.text }}
-              className="rounded-md py-2 text-sm font-semibold disabled:opacity-60"
-            >
-              {creating ? "Criando..." : "Criar meu cadastro agora"}
-            </button>
-          </div>
-        )}
-        <button onClick={handleLogout} style={{ color: C.textFaint }} className="text-xs underline underline-offset-2 mt-4">
-          Sair
-        </button>
+        Carregando...
       </div>
     );
+  }
+
+  // Já carregou tudo e não achou um cadastro vinculado a esse login — em vez
+  // de ficar girando sem explicação, pede os dados que faltam direto aqui.
+  if (!me) {
+    return <CompleteCadastro units={units} onLogout={handleLogout} />;
   }
 
   return (
@@ -99,6 +74,123 @@ export default function AlunoHome({ onBack }) {
         )}
         <CheckInCard me={me} units={units} professores={professores} classes={classes} attendance={attendance} />
       </div>
+    </div>
+  );
+}
+
+function CompleteCadastro({ units, onLogout }) {
+  const [name, setName] = useState("");
+  const [tipo, setTipo] = useState("aluno");
+  const [unitId, setUnitId] = useState("");
+  const [periodo, setPeriodo] = useState("");
+  const [grau, setGrau] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const isProfessor = tipo === "professor";
+
+  // se o login foi feito por CPF, o e-mail interno da conta já traz o CPF —
+  // aproveita pra não pedir de novo.
+  const email = auth.currentUser?.email || "";
+  const cpf = email.endsWith("@teamonan.app") ? email.replace("@teamonan.app", "") : "";
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    if (!name.trim()) {
+      setError("Preencha seu nome.");
+      return;
+    }
+    if (!isProfessor && (!unitId || !periodo)) {
+      setError("Para aluno, unidade e período são obrigatórios.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await addDoc(collection(db, "students"), {
+        uid: auth.currentUser.uid,
+        name: name.trim(),
+        cpf,
+        tipo,
+        unitId: unitId || "",
+        periodo: periodo || "",
+        grau: grau || "",
+      });
+      // a tela sai sozinha assim que o onSnapshot de students encontrar
+      // esse novo registro — não precisa fazer nada aqui.
+    } catch (err) {
+      setError("Não consegui salvar. Tente de novo.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ background: C.bg }} className="w-full min-h-screen flex items-center justify-center p-6">
+      <form
+        onSubmit={handleSubmit}
+        style={{ background: C.bgPanel, borderColor: C.line }}
+        className="w-full max-w-sm border rounded-md p-8 flex flex-col gap-4"
+      >
+        <div className="flex flex-col items-center gap-3 mb-1">
+          <img src={logo} alt="Team Onan" className="w-14 h-14 rounded-full object-cover" style={{ border: `2px solid ${C.red}` }} />
+          <div style={{ color: C.text }} className="font-bold text-lg tracking-tight text-center">
+            Falta completar seu cadastro
+          </div>
+          <div style={{ color: C.textFaint }} className="text-xs text-center">
+            Seu login já existe, só falta preencher seus dados.
+          </div>
+        </div>
+
+        <div>
+          <FieldLabel>Nome</FieldLabel>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+            style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+            className="border rounded-md px-3 py-2 text-sm outline-none w-full"
+          />
+        </div>
+        <div>
+          <FieldLabel>Você é...</FieldLabel>
+          <Select
+            value={tipo}
+            onChange={setTipo}
+            placeholder="Tipo"
+            options={[
+              { value: "aluno", label: "Aluno" },
+              { value: "professor", label: "Professor" },
+            ]}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Select
+            value={unitId}
+            onChange={setUnitId}
+            placeholder={isProfessor ? "Unidade (opcional)" : "Unidade"}
+            options={units.map((u) => ({ value: u.id, label: u.name }))}
+          />
+          <Select
+            value={periodo}
+            onChange={setPeriodo}
+            placeholder={isProfessor ? "Período (opcional)" : "Período"}
+            options={PERIODS.map((p) => ({ value: p, label: p }))}
+          />
+        </div>
+        <Select value={grau} onChange={setGrau} placeholder="Grau (ainda não definido)" options={GRAUS.map((g) => ({ value: g, label: g }))} />
+
+        {error && (
+          <div style={{ color: C.red }} className="text-xs">
+            {error}
+          </div>
+        )}
+
+        <button type="submit" disabled={busy} style={{ background: C.red, color: C.text }} className="rounded-md py-2 text-sm font-semibold disabled:opacity-60">
+          {busy ? "Salvando..." : "Salvar cadastro"}
+        </button>
+        <button type="button" onClick={onLogout} style={{ color: C.textFaint }} className="text-xs text-center underline underline-offset-2">
+          Sair
+        </button>
+      </form>
     </div>
   );
 }
