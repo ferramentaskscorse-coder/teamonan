@@ -514,7 +514,7 @@ function CheckInCard({ me, units, professores, classes, attendance }) {
           >
             <Camera size={16} />
             {photoPreview ? "Trocar foto" : "Tirar ou escolher uma foto"}
-            <input type="file" accept="image/*" capture="user" onChange={handlePhoto} className="hidden" />
+            <input type="file" accept="image/*" onChange={handlePhoto} className="hidden" />
           </label>
 
           {photoPreview && (

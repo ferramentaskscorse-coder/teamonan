@@ -238,8 +238,10 @@ function PeopleList({ units, students }) {
           />
           <input
             value={form.cpf}
-            onChange={(e) => setField("cpf", e.target.value)}
-            placeholder="CPF"
+            onChange={(e) => setField("cpf", e.target.value.replace(/\D/g, ""))}
+            placeholder="CPF (só números)"
+            inputMode="numeric"
+            maxLength={11}
             style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
             className="border rounded-md px-3 py-2 text-sm outline-none"
           />

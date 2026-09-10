@@ -191,7 +191,10 @@ export default function AlunoAuth({ onBack }) {
               <FieldLabel>CPF</FieldLabel>
               <input
                 value={loginCpf}
-                onChange={(e) => setLoginCpf(e.target.value)}
+                onChange={(e) => setLoginCpf(e.target.value.replace(/\D/g, ""))}
+                inputMode="numeric"
+                maxLength={11}
+                placeholder="Só números"
                 style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
                 className="border rounded-md px-3 py-2 text-sm outline-none w-full"
               />
@@ -229,7 +232,10 @@ export default function AlunoAuth({ onBack }) {
               <FieldLabel>CPF</FieldLabel>
               <input
                 value={forgotCpf}
-                onChange={(e) => setForgotCpf(e.target.value)}
+                onChange={(e) => setForgotCpf(e.target.value.replace(/\D/g, ""))}
+                inputMode="numeric"
+                maxLength={11}
+                placeholder="Só números"
                 style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
                 className="border rounded-md px-3 py-2 text-sm outline-none w-full"
               />
@@ -268,7 +274,10 @@ export default function AlunoAuth({ onBack }) {
               <FieldLabel>CPF</FieldLabel>
               <input
                 value={signupCpf}
-                onChange={(e) => setSignupCpf(e.target.value)}
+                onChange={(e) => setSignupCpf(e.target.value.replace(/\D/g, ""))}
+                inputMode="numeric"
+                maxLength={11}
+                placeholder="Só números"
                 style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
                 className="border rounded-md px-3 py-2 text-sm outline-none w-full"
               />
