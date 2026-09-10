@@ -4,7 +4,7 @@ import logo from "../assets/logo.jpg";
 
 const SHARED_PASSWORD = import.meta.env.VITE_APP_PASSWORD || "teamonan2026";
 
-export default function Login({ onSuccess }) {
+export default function Login({ onSuccess, onBack }) {
   const [pwInput, setPwInput] = useState("");
   const [pwError, setPwError] = useState("");
 
@@ -54,6 +54,11 @@ export default function Login({ onSuccess }) {
         <button type="submit" style={{ background: C.red, color: C.text }} className="rounded-md py-2 text-sm font-semibold">
           Entrar
         </button>
+        {onBack && (
+          <button type="button" onClick={onBack} style={{ color: C.textFaint }} className="text-xs text-center underline underline-offset-2">
+            Voltar
+          </button>
+        )}
       </form>
     </div>
   );

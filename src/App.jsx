@@ -1,129 +1,59 @@
 import { useState, useEffect } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
-import { LogOut, CalendarCheck, BarChart3, ClipboardList, Loader2, RefreshCw } from "lucide-react";
-import { db, ensureAnonymousAuth } from "./firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth, logoutAny } from "./firebase";
 import { C } from "./theme";
-import { NavTab } from "./ui";
-import logo from "./assets/logo.jpg";
-import Login from "./pages/Login";
-import Presenca from "./pages/Presenca";
-import Dashboard from "./pages/Dashboard";
-import Cadastros from "./pages/Cadastros";
-
-function watch(name, setter) {
-  return onSnapshot(
-    collection(db, name),
-    (snap) => setter(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
-    (err) => console.error(`Falha ao sincronizar ${name}`, err)
-  );
-}
+import ModeSelect from "./pages/ModeSelect";
+import AlunoAuth from "./pages/AlunoAuth";
+import AlunoHome from "./pages/AlunoHome";
+import AdminApp from "./AdminApp";
 
 export default function App() {
-  const [booted, setBooted] = useState(false);
-  const [connError, setConnError] = useState("");
-  // Login persiste na aba (sessionStorage) — assim, dar F5 não te joga de
-  // volta pra tela de senha. Fechar a aba/navegador aí sim exige login de novo.
-  const [authed, setAuthed] = useState(() => sessionStorage.getItem("onan-authed") === "true");
-  const [page, setPage] = useState("presenca");
-
-  const [units, setUnits] = useState([]);
-  const [students, setStudents] = useState([]);
-  const [classes, setClasses] = useState([]);
-  const [attendance, setAttendance] = useState([]);
+  // "mode" decide qual fluxo mostrar: null (escolha inicial), "admin" ou "aluno".
+  // Persistido na aba (sessionStorage) — F5 mantém o modo escolhido.
+  const [mode, setMode] = useState(() => sessionStorage.getItem("onan-mode") || null);
+  const [alunoUser, setAlunoUser] = useState(undefined); // undefined = ainda não sabemos
 
   useEffect(() => {
-    let unsubs = [];
-    ensureAnonymousAuth()
-      .then(() => {
-        unsubs = [
-          watch("units", setUnits),
-          watch("students", setStudents),
-          watch("classes", setClasses),
-          watch("attendance", setAttendance),
-        ];
-        setBooted(true);
-      })
-      .catch((e) => {
-        console.error("Falha na autenticação do Firebase", e);
-        setConnError(
-          "Não consegui conectar ao Firebase. Confira as chaves em .env e se a autenticação anônima está ativada no console."
-        );
-        setBooted(true);
-      });
-    return () => unsubs.forEach((u) => u());
-  }, []);
+    if (mode !== "aluno") return;
+    const unsub = onAuthStateChanged(auth, (user) => {
+      // usuário anônimo (resquício do modo admin) não conta como aluno logado
+      setAlunoUser(user && !user.isAnonymous ? user : null);
+    });
+    return unsub;
+  }, [mode]);
 
-  function handleLoginSuccess() {
-    sessionStorage.setItem("onan-authed", "true");
-    setAuthed(true);
+  async function selectMode(m) {
+    await logoutAny().catch(() => {});
+    sessionStorage.setItem("onan-mode", m);
+    setMode(m);
+    setAlunoUser(undefined);
   }
 
-  function handleLogout() {
+  async function backToStart() {
+    await logoutAny().catch(() => {});
+    sessionStorage.removeItem("onan-mode");
     sessionStorage.removeItem("onan-authed");
-    setAuthed(false);
+    setMode(null);
+    setAlunoUser(undefined);
   }
 
-  if (!booted) {
-    return (
-      <div style={{ background: C.bg, color: C.textDim }} className="w-full min-h-screen flex items-center justify-center gap-2 text-sm">
-        <Loader2 className="animate-spin" size={18} />
-        Carregando...
-      </div>
-    );
+  if (mode === "admin") {
+    return <AdminApp onBack={backToStart} />;
   }
 
-  if (connError) {
-    return (
-      <div style={{ background: C.bg }} className="w-full min-h-screen flex items-center justify-center p-6">
-        <div style={{ background: C.bgPanel, borderColor: C.red, color: C.text }} className="border rounded-md p-6 max-w-sm text-sm">
-          {connError}
+  if (mode === "aluno") {
+    if (alunoUser === undefined) {
+      return (
+        <div style={{ background: C.bg, color: C.textDim }} className="w-full min-h-screen flex items-center justify-center text-sm">
+          Carregando...
         </div>
-      </div>
-    );
+      );
+    }
+    if (!alunoUser) {
+      return <AlunoAuth onBack={backToStart} />;
+    }
+    return <AlunoHome onBack={backToStart} />;
   }
 
-  if (!authed) {
-    return <Login onSuccess={handleLoginSuccess} />;
-  }
-
-  return (
-    <div style={{ background: C.bg }} className="w-full min-h-screen flex flex-col">
-      <div style={{ background: C.bgPanel, borderColor: C.line }} className="border-b flex items-center justify-between px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-2.5">
-          <img src={logo} alt="Team Onan" className="w-9 h-9 rounded-full object-cover shrink-0" style={{ border: `1.5px solid ${C.red}` }} />
-          <div style={{ color: C.text }} className="font-bold tracking-tight text-sm sm:text-base">
-            Team Onan
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={() => window.location.reload()} title="Atualizar" style={{ color: C.textDim }} className="flex items-center gap-1.5 text-xs hover:opacity-80">
-            <RefreshCw size={14} />
-            Atualizar
-          </button>
-          <button onClick={handleLogout} style={{ color: C.textDim }} className="flex items-center gap-1.5 text-xs hover:opacity-80">
-            <LogOut size={14} />
-            Sair
-          </button>
-        </div>
-      </div>
-
-      <div style={{ borderColor: C.line }} className="border-b flex px-2 sm:px-6">
-        <NavTab active={page === "presenca"} onClick={() => setPage("presenca")} icon={CalendarCheck}>
-          Presença
-        </NavTab>
-        <NavTab active={page === "dashboard"} onClick={() => setPage("dashboard")} icon={BarChart3}>
-          Dashboard
-        </NavTab>
-        <NavTab active={page === "cadastros"} onClick={() => setPage("cadastros")} icon={ClipboardList}>
-          Cadastros
-        </NavTab>
-      </div>
-
-      <div className="flex-1 p-4 sm:p-6">
-        {page === "presenca" && <Presenca units={units} students={students} classes={classes} attendance={attendance} />}
-        {page === "dashboard" && <Dashboard units={units} students={students} classes={classes} attendance={attendance} />}
-        {page === "cadastros" && <Cadastros units={units} students={students} />}
-      </div>
-    </div>
-  );
+  return <ModeSelect onSelect={selectMode} />;
 }
