@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { collection, onSnapshot, getDocs, addDoc, updateDoc, doc } from "firebase/firestore";
-import { signUpAluno, loginAluno, db } from "../firebase";
+import { updateEmail } from "firebase/auth";
+import { signUpAluno, loginAluno, setCpfIndex, requestPasswordReset, cpfToEmail, db } from "../firebase";
 import { C, PERIODS } from "../theme";
 import { Select, FieldLabel } from "../ui";
 import logo from "../assets/logo.jpg";
@@ -10,9 +11,10 @@ function normalizeCpf(cpf) {
 }
 
 export default function AlunoAuth({ onBack }) {
-  const [mode, setMode] = useState("login"); // "login" | "signup"
+  const [mode, setMode] = useState("login"); // "login" | "signup" | "forgot"
   const [units, setUnits] = useState([]);
   const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
 
   // unidades são públicas para leitura, então já carregam mesmo sem login
@@ -20,6 +22,12 @@ export default function AlunoAuth({ onBack }) {
     const unsub = onSnapshot(collection(db, "units"), (snap) => setUnits(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
     return unsub;
   }, []);
+
+  function switchMode(m) {
+    setMode(m);
+    setError("");
+    setInfo("");
+  }
 
   // -------- login --------
   const [loginCpf, setLoginCpf] = useState("");
@@ -38,6 +46,28 @@ export default function AlunoAuth({ onBack }) {
     setBusy(false);
   }
 
+  // -------- esqueci minha senha --------
+  const [forgotCpf, setForgotCpf] = useState("");
+
+  async function handleForgot(e) {
+    e.preventDefault();
+    if (!forgotCpf.trim()) return;
+    setBusy(true);
+    setError("");
+    setInfo("");
+    try {
+      const result = await requestPasswordReset(forgotCpf);
+      if (!result.hasRealEmail) {
+        setError("Esse cadastro não tem e-mail de recuperação salvo. Peça para a equipe te ajudar a trocar a senha.");
+      } else {
+        setInfo("Enviamos um link de recuperação para o e-mail cadastrado.");
+      }
+    } catch (err) {
+      setError("Não consegui processar agora. Tente de novo.");
+    }
+    setBusy(false);
+  }
+
   // -------- cadastro --------
   const [name, setName] = useState("");
   const [signupCpf, setSignupCpf] = useState("");
@@ -46,6 +76,7 @@ export default function AlunoAuth({ onBack }) {
   const [confirmSenha, setConfirmSenha] = useState("");
   const [unitId, setUnitId] = useState("");
   const [periodo, setPeriodo] = useState("");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
   const isProfessor = tipo === "professor";
 
   async function handleSignup(e) {
@@ -72,6 +103,19 @@ export default function AlunoAuth({ onBack }) {
     try {
       const cred = await signUpAluno(signupCpf, senha);
       const uid = cred.user.uid;
+
+      // se a pessoa informou um e-mail de verdade, ele vira o e-mail da conta
+      // (necessário para "esqueci minha senha" funcionar de verdade)
+      let authEmail = cpfToEmail(signupCpf);
+      if (recoveryEmail.trim()) {
+        try {
+          await updateEmail(cred.user, recoveryEmail.trim());
+          authEmail = recoveryEmail.trim();
+        } catch (e) {
+          // se não conseguir (ex: e-mail já usado em outra conta), segue com o sintético
+        }
+      }
+      await setCpfIndex(signupCpf, authEmail, uid);
 
       // tenta encontrar um cadastro já existente (feito pela equipe) com o mesmo CPF
       const cpfDigits = normalizeCpf(signupCpf);
@@ -114,24 +158,23 @@ export default function AlunoAuth({ onBack }) {
           </div>
         </div>
 
-        <div style={{ borderColor: C.line }} className="border-b flex gap-1">
-          {[
-            ["login", "Entrar"],
-            ["signup", "Criar cadastro"],
-          ].map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => {
-                setMode(key);
-                setError("");
-              }}
-              style={{ color: mode === key ? C.text : C.textFaint, borderColor: mode === key ? C.red : "transparent" }}
-              className="text-sm px-3 py-2 border-b-2 -mb-px font-medium"
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {mode !== "forgot" && (
+          <div style={{ borderColor: C.line }} className="border-b flex gap-1">
+            {[
+              ["login", "Entrar"],
+              ["signup", "Criar cadastro"],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => switchMode(key)}
+                style={{ color: mode === key ? C.text : C.textFaint, borderColor: mode === key ? C.red : "transparent" }}
+                className="text-sm px-3 py-2 border-b-2 -mb-px font-medium"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {mode === "login" && (
           <form onSubmit={handleLogin} className="flex flex-col gap-3">
@@ -161,6 +204,42 @@ export default function AlunoAuth({ onBack }) {
             )}
             <button type="submit" disabled={busy} style={{ background: C.red, color: C.text }} className="rounded-md py-2 text-sm font-semibold disabled:opacity-60">
               Entrar
+            </button>
+            <button type="button" onClick={() => switchMode("forgot")} style={{ color: C.textFaint }} className="text-xs text-center underline underline-offset-2">
+              Esqueci minha senha
+            </button>
+          </form>
+        )}
+
+        {mode === "forgot" && (
+          <form onSubmit={handleForgot} className="flex flex-col gap-3">
+            <div style={{ color: C.textDim }} className="text-xs leading-relaxed">
+              Informe o CPF do seu cadastro. Se você salvou um e-mail de recuperação, enviamos um link para trocar a senha.
+            </div>
+            <div>
+              <FieldLabel>CPF</FieldLabel>
+              <input
+                value={forgotCpf}
+                onChange={(e) => setForgotCpf(e.target.value)}
+                style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+                className="border rounded-md px-3 py-2 text-sm outline-none w-full"
+              />
+            </div>
+            {error && (
+              <div style={{ color: C.red }} className="text-xs">
+                {error}
+              </div>
+            )}
+            {info && (
+              <div style={{ color: C.oliveBright }} className="text-xs">
+                {info}
+              </div>
+            )}
+            <button type="submit" disabled={busy} style={{ background: C.red, color: C.text }} className="rounded-md py-2 text-sm font-semibold disabled:opacity-60">
+              Enviar link de recuperação
+            </button>
+            <button type="button" onClick={() => switchMode("login")} style={{ color: C.textFaint }} className="text-xs text-center underline underline-offset-2">
+              Voltar para o login
             </button>
           </form>
         )}
@@ -227,6 +306,17 @@ export default function AlunoAuth({ onBack }) {
                 type="password"
                 value={confirmSenha}
                 onChange={(e) => setConfirmSenha(e.target.value)}
+                style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+                className="border rounded-md px-3 py-2 text-sm outline-none w-full"
+              />
+            </div>
+            <div>
+              <FieldLabel>E-mail de recuperação (opcional)</FieldLabel>
+              <input
+                type="email"
+                value={recoveryEmail}
+                onChange={(e) => setRecoveryEmail(e.target.value)}
+                placeholder="Só é usado se você esquecer a senha"
                 style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
                 className="border rounded-md px-3 py-2 text-sm outline-none w-full"
               />

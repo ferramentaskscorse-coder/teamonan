@@ -21,6 +21,15 @@ service cloud.firestore {
     // Lista de unidades é pública para leitura — precisa aparecer no
     // formulário de cadastro do aluno, antes de ele ter login. Só a
     // equipe pode criar/editar/remover unidades.
+    // Índice CPF -> e-mail interno da conta. Leitura pública porque é
+    // consultado ANTES do login (pra achar com qual e-mail tentar entrar,
+    // ou pra onde mandar o link de "esqueci minha senha"). Não expõe nada
+    // sensível — só o e-mail sintético/recuperação de cada CPF.
+    match /cpfIndex/{cpfId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
     match /units/{unitId} {
       allow read: if true;
       allow write: if isAdmin();
