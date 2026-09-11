@@ -97,7 +97,7 @@ export default function Presenca({ units, students, classes, attendance }) {
             type="date"
             value={selDate}
             onChange={(e) => setSelDate(e.target.value)}
-            style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+            style={{ background: C.bgRaised, borderColor: C.line, color: C.text, height: "42px", boxSizing: "border-box" }}
             className="border rounded-md px-3 py-2 text-sm outline-none w-full"
           />
         </div>

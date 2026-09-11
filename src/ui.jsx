@@ -27,6 +27,8 @@ export function Select({ value, onChange, options, placeholder, disabled }) {
         borderColor: C.line,
         color: value ? C.text : C.textFaint,
         opacity: disabled ? 0.5 : 1,
+        height: "42px",
+        boxSizing: "border-box",
       }}
       className="border rounded-md px-3 py-2 text-sm outline-none w-full"
     >

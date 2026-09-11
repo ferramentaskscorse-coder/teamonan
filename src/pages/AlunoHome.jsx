@@ -1,11 +1,41 @@
 import { useState, useEffect } from "react";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { Camera, Check, LogOut, Pencil, AlertTriangle, Loader2, Users } from "lucide-react";
-import { db, storage, auth, logoutAny } from "../firebase";
+import { db, auth, logoutAny } from "../firebase";
 import { C, PERIODS, GRAUS, fmtDate, todayISO } from "../theme";
 import { Select, FieldLabel, Modal } from "../ui";
 import logo from "../assets/logo.jpg";
+
+// Reduz a foto para uma miniatura leve (JPEG, lado máximo 480px) e devolve
+// como data URL (texto), para guardar direto no Firestore sem precisar do
+// Firebase Storage (que hoje exige plano pago).
+function compressPhoto(file, maxDim = 480, quality = 0.6) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      img.onerror = reject;
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function AlunoHome({ onBack }) {
   const uid = auth.currentUser?.uid;
@@ -146,7 +176,7 @@ function CompleteCadastro({ units, onLogout }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             autoFocus
-            style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+            style={{ background: C.bgRaised, borderColor: C.line, color: C.text, height: "42px", boxSizing: "border-box" }}
             className="border rounded-md px-3 py-2 text-sm outline-none w-full"
           />
         </div>
@@ -331,7 +361,7 @@ function TurmaCard({ me, units, students, classes, attendance }) {
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+          style={{ background: C.bgRaised, borderColor: C.line, color: C.text, height: "42px", boxSizing: "border-box" }}
           className="border rounded-md px-3 py-2 text-sm outline-none w-full"
         />
         <Select value={periodo} onChange={setPeriodo} placeholder="Período" options={PERIODS.map((p) => ({ value: p, label: p }))} />
@@ -413,23 +443,29 @@ function CheckInCard({ me, units, professores, classes, attendance }) {
   const [teacherId, setTeacherId] = useState("");
   const [date, setDate] = useState(todayISO());
   const [periodo, setPeriodo] = useState(me.periodo || "");
-  const [photoFile, setPhotoFile] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(null);
+  const [photoDataUrl, setPhotoDataUrl] = useState(null);
+  const [compressing, setCompressing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [popup, setPopup] = useState(null);
   const [done, setDone] = useState(false);
 
-  const ready = unitId && teacherId && date && periodo && photoFile;
+  const ready = unitId && teacherId && date && periodo && photoDataUrl;
 
   const currentClass = classes.find((c) => c.unitId === unitId && c.period === periodo && c.teacherId === teacherId && c.date === date);
   const alreadyMarked = currentClass ? attendance.some((a) => a.classId === currentClass.id && a.studentId === me.id) : false;
 
-  function handlePhoto(e) {
+  async function handlePhoto(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setPhotoFile(file);
-    setPhotoPreview(URL.createObjectURL(file));
     setDone(false);
+    setCompressing(true);
+    try {
+      const dataUrl = await compressPhoto(file);
+      setPhotoDataUrl(dataUrl);
+    } catch (err) {
+      setPopup({ genericError: true });
+    }
+    setCompressing(false);
   }
 
   async function handleConfirm() {
@@ -458,15 +494,9 @@ function CheckInCard({ me, units, professores, classes, attendance }) {
         const ref1 = await addDoc(collection(db, "classes"), { unitId, period: periodo, teacherId, date });
         classId = ref1.id;
       }
-      const photoRef = ref(storage, `attendance-photos/${classId}/${me.id}-${Date.now()}.jpg`);
-
-      const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms));
-
-      await Promise.race([uploadBytes(photoRef, photoFile), timeout(20000)]);
-      const photoUrl = await Promise.race([getDownloadURL(photoRef), timeout(20000)]);
-      await addDoc(collection(db, "attendance"), { classId, studentId: me.id, photoUrl, selfCheckIn: true });
+      await addDoc(collection(db, "attendance"), { classId, studentId: me.id, photoUrl: photoDataUrl, selfCheckIn: true });
       setDone(true);
-      setPhotoFile(null);
+      setPhotoDataUrl(null);
     } catch (err) {
       setPopup({ genericError: true });
     }
@@ -494,7 +524,7 @@ function CheckInCard({ me, units, professores, classes, attendance }) {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+            style={{ background: C.bgRaised, borderColor: C.line, color: C.text, height: "42px", boxSizing: "border-box" }}
             className="border rounded-md px-3 py-2 text-sm outline-none w-full"
           />
         </div>
@@ -515,13 +545,13 @@ function CheckInCard({ me, units, professores, classes, attendance }) {
             style={{ background: C.bgRaised, borderColor: C.line, color: C.textDim }}
             className="border rounded-md px-3 py-3 text-sm flex items-center justify-center gap-2 cursor-pointer"
           >
-            <Camera size={16} />
-            {photoPreview ? "Trocar foto" : "Tirar ou escolher uma foto"}
-            <input type="file" accept="image/*" onChange={handlePhoto} className="hidden" />
+            {compressing ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+            {compressing ? "Preparando foto..." : photoDataUrl ? "Trocar foto" : "Tirar ou escolher uma foto"}
+            <input type="file" accept="image/*" onChange={handlePhoto} className="hidden" disabled={compressing} />
           </label>
 
-          {photoPreview && (
-            <img src={photoPreview} alt="Prévia da foto" className="rounded-md w-full max-h-48 object-cover" />
+          {photoDataUrl && (
+            <img src={photoDataUrl} alt="Prévia da foto" className="rounded-md w-full max-h-48 object-cover" />
           )}
 
           {done && (
