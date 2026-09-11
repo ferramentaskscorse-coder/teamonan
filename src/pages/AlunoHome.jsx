@@ -361,8 +361,17 @@ function TurmaCard({ me, units, students, classes, attendance }) {
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          style={{ background: C.bgRaised, borderColor: C.line, color: C.text, height: "42px", boxSizing: "border-box" }}
-          className="border rounded-md px-3 py-2 text-sm outline-none w-full"
+          style={{
+            background: C.bgRaised,
+            borderColor: C.line,
+            color: C.text,
+            height: "42px",
+            boxSizing: "border-box",
+            width: "100%",
+            maxWidth: "100%",
+            minWidth: 0,
+          }}
+          className="border rounded-md px-3 py-2 text-sm outline-none"
         />
         <Select value={periodo} onChange={setPeriodo} placeholder="Período" options={PERIODS.map((p) => ({ value: p, label: p }))} />
       </div>
@@ -518,14 +527,23 @@ function CheckInCard({ me, units, professores, classes, attendance }) {
           <FieldLabel>Professor</FieldLabel>
           <Select value={teacherId} onChange={setTeacherId} placeholder="Professor" options={professores.map((p) => ({ value: p.id, label: p.name }))} />
         </div>
-        <div>
+        <div style={{ minWidth: 0 }}>
           <FieldLabel>Data</FieldLabel>
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            style={{ background: C.bgRaised, borderColor: C.line, color: C.text, height: "42px", boxSizing: "border-box" }}
-            className="border rounded-md px-3 py-2 text-sm outline-none w-full"
+            style={{
+              background: C.bgRaised,
+              borderColor: C.line,
+              color: C.text,
+              height: "42px",
+              boxSizing: "border-box",
+              width: "100%",
+              maxWidth: "100%",
+              minWidth: 0,
+            }}
+            className="border rounded-md px-3 py-2 text-sm outline-none"
           />
         </div>
         <div>

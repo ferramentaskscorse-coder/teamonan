@@ -1,12 +1,45 @@
 import { useState, useMemo } from "react";
-import { C, GRAUS } from "../theme";
+import { C, GRAUS, fmtDate } from "../theme";
 import { Select, EmptyState, StatCard, SectionTitle, TaxaBar } from "../ui";
+
+const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+
+function bucketKey(dateStr, granularidade) {
+  const [y, m] = dateStr.split("-").map(Number);
+  if (granularidade === "dia") return dateStr;
+  if (granularidade === "trimestre") return `${y}-T${Math.ceil(m / 3)}`;
+  if (granularidade === "semestre") return `${y}-S${m <= 6 ? 1 : 2}`;
+  return `${y}-${String(m).padStart(2, "0")}`; // mes
+}
+
+function bucketLabel(key, granularidade) {
+  if (granularidade === "dia") return fmtDate(key);
+  if (granularidade === "trimestre") {
+    const [y, t] = key.split("-T");
+    return `${t}º tri/${y.slice(2)}`;
+  }
+  if (granularidade === "semestre") {
+    const [y, s] = key.split("-S");
+    return `${s}º sem/${y.slice(2)}`;
+  }
+  const [y, m] = key.split("-");
+  return `${MESES[Number(m) - 1]}/${y.slice(2)}`;
+}
+
+const GRANULARIDADES = [
+  { value: "mes", label: "Mês" },
+  { value: "trimestre", label: "Trimestre" },
+  { value: "semestre", label: "Semestre" },
+  { value: "dia", label: "Dia" },
+];
 
 export default function Dashboard({ units, students, classes, attendance }) {
   const [mesAno, setMesAno] = useState("");
   const [unitId, setUnitId] = useState("");
   const [teacherId, setTeacherId] = useState("");
   const [studentId, setStudentId] = useState("");
+  const [granularidade, setGranularidade] = useState("mes");
+  const [showGranularidade, setShowGranularidade] = useState(false);
 
   const professores = students.filter((s) => s.tipo === "professor");
   const alunos = students.filter((s) => s.tipo !== "professor");
@@ -14,6 +47,7 @@ export default function Dashboard({ units, students, classes, attendance }) {
   const hasFilters = mesAno || unitId || teacherId || studentId;
 
   const studentOptions = unitId ? alunos.filter((s) => s.unitId === unitId) : alunos;
+  const selectedStudent = studentId ? alunos.find((s) => s.id === studentId) : null;
 
   const scopeClasses = classes.filter(
     (c) =>
@@ -28,6 +62,10 @@ export default function Dashboard({ units, students, classes, attendance }) {
   const totalAulas = scopeClasses.length;
   const totalPresencas = scopeAttendance.length;
   const mediaPorAula = totalAulas ? (totalPresencas / totalAulas).toFixed(1) : "0";
+  const presencasDeProfessores = scopeAttendance.filter((a) => {
+    const pessoa = students.find((s) => s.id === a.studentId);
+    return pessoa?.tipo === "professor";
+  }).length;
 
   const unitsInScope = unitId ? units.filter((u) => u.id === unitId) : units;
   const porUnidade = useMemo(() => {
@@ -64,6 +102,61 @@ export default function Dashboard({ units, students, classes, attendance }) {
       .sort((a, b) => b.taxa - a.taxa);
   }, [studentsInScope, units, scopeClasses, scopeClassIds, attendance]);
 
+  // histórico de dias — só quando um aluno específico está filtrado
+  const historicoAluno = useMemo(() => {
+    if (!selectedStudent) return [];
+    return attendance
+      .filter((a) => a.studentId === selectedStudent.id)
+      .map((a) => {
+        const cls = classes.find((c) => c.id === a.classId);
+        if (!cls) return null;
+        return {
+          id: a.id,
+          date: cls.date,
+          period: cls.period,
+          teacherName: professores.find((p) => p.id === cls.teacherId)?.name || "—",
+          unitName: units.find((u) => u.id === cls.unitId)?.name || "—",
+          hasPhoto: !!a.photoUrl,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
+  }, [selectedStudent, attendance, classes, professores, units]);
+
+  // gráfico por período — não considera o filtro de mês/ano (o objetivo aqui
+  // é justamente mostrar a evolução ao longo do tempo), mas respeita
+  // unidade/professor/aluno.
+  const chartBaseClasses = classes.filter((c) => (!unitId || c.unitId === unitId) && (!teacherId || c.teacherId === teacherId));
+  const chartData = useMemo(() => {
+    const relevantClasses = selectedStudent ? chartBaseClasses.filter((c) => c.unitId === selectedStudent.unitId) : chartBaseClasses;
+    const relevantIds = new Set(relevantClasses.map((c) => c.id));
+    const buckets = {};
+    relevantClasses.forEach((c) => {
+      const key = bucketKey(c.date, granularidade);
+      buckets[key] = buckets[key] || { aulas: 0, presencas: 0 };
+      buckets[key].aulas++;
+    });
+    attendance.forEach((a) => {
+      if (!relevantIds.has(a.classId)) return;
+      if (selectedStudent && a.studentId !== selectedStudent.id) return;
+      const cls = classes.find((c) => c.id === a.classId);
+      if (!cls) return;
+      const key = bucketKey(cls.date, granularidade);
+      if (!buckets[key]) return;
+      buckets[key].presencas++;
+    });
+    return Object.entries(buckets)
+      .map(([key, v]) => ({
+        key,
+        label: bucketLabel(key, granularidade),
+        aulas: v.aulas,
+        presencas: v.presencas,
+        taxa: v.aulas ? Math.round((v.presencas / v.aulas) * 100) : 0,
+      }))
+      .sort((a, b) => a.key.localeCompare(b.key))
+      .slice(-12);
+  }, [chartBaseClasses, attendance, classes, selectedStudent, granularidade]);
+
   const alunosParaGrau = unitId ? alunos.filter((a) => a.unitId === unitId) : alunos;
   const porGrau = useMemo(() => {
     const counts = {};
@@ -96,7 +189,7 @@ export default function Dashboard({ units, students, classes, attendance }) {
             type="month"
             value={mesAno}
             onChange={(e) => setMesAno(e.target.value)}
-            style={{ background: C.bgRaised, borderColor: C.line, color: mesAno ? C.text : C.textFaint }}
+            style={{ background: C.bgRaised, borderColor: C.line, color: mesAno ? C.text : C.textFaint, height: "42px", boxSizing: "border-box" }}
             className="border rounded-md px-3 py-2 text-sm outline-none w-full"
           />
         </div>
@@ -116,37 +209,6 @@ export default function Dashboard({ units, students, classes, attendance }) {
         )}
       </div>
 
-      <div>
-        <SectionTitle>Distribuição por grau{unitId ? ` — ${units.find((u) => u.id === unitId)?.name || ""}` : ""}</SectionTitle>
-        <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md overflow-hidden">
-          {alunosParaGrau.length === 0 ? (
-            <div style={{ color: C.textFaint }} className="text-sm px-4 py-6 text-center">
-              Nenhum aluno cadastrado nesse recorte.
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <tbody>
-                {porGrau.map((r) => (
-                  <tr key={r.grau} style={{ borderColor: C.lineSoft }} className="border-b last:border-0">
-                    <td style={{ color: r.grau === "Sem grau definido" ? C.textFaint : C.text }} className="px-4 py-2 whitespace-nowrap">
-                      {r.grau}
-                    </td>
-                    <td className="px-4 py-2 w-full">
-                      <div style={{ background: C.bgRaised }} className="h-2 rounded-full overflow-hidden">
-                        <div style={{ background: C.brass, width: `${(r.count / maxGrauCount) * 100}%` }} className="h-full" />
-                      </div>
-                    </td>
-                    <td style={{ color: C.textDim }} className="px-4 py-2 text-right font-semibold tabular-nums">
-                      {r.count}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
       {noAulasYet ? (
         <EmptyState text="Ainda não há aulas registradas. Os números de presença aparecem aqui assim que a primeira aula for marcada." />
       ) : (
@@ -155,6 +217,68 @@ export default function Dashboard({ units, students, classes, attendance }) {
             <StatCard label="Total de aulas" value={totalAulas} />
             <StatCard label="Total de presenças" value={totalPresencas} />
             <StatCard label="Média por aula" value={mediaPorAula} />
+          </div>
+          {presencasDeProfessores > 0 && (
+            <div style={{ color: C.textFaint }} className="text-xs -mt-3">
+              * {presencasDeProfessores} dessas presenças são de professores confirmando a própria participação — por isso o total acima
+              pode ser maior que a soma da tabela "Por aluno" abaixo, que conta só quem é Tipo=Aluno.
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <SectionTitle>Taxa de frequência ao longo do tempo{selectedStudent ? ` — ${selectedStudent.name}` : ""}</SectionTitle>
+              <button onClick={() => setShowGranularidade((v) => !v)} style={{ color: C.textFaint }} className="text-xs underline underline-offset-2 shrink-0 ml-2">
+                mudar visualização
+              </button>
+            </div>
+            {showGranularidade && (
+              <div className="flex gap-1.5 mb-3">
+                {GRANULARIDADES.map((g) => (
+                  <button
+                    key={g.value}
+                    onClick={() => setGranularidade(g.value)}
+                    style={{
+                      background: granularidade === g.value ? C.red : C.bgRaised,
+                      borderColor: granularidade === g.value ? C.red : C.line,
+                      color: granularidade === g.value ? C.text : C.textDim,
+                    }}
+                    className="border rounded-md px-3 py-1.5 text-xs font-medium"
+                  >
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div style={{ color: C.textFaint }} className="text-xs mb-2">
+              Não considera o filtro de mês/ano acima — mostra a evolução completa (respeitando unidade/professor/aluno).
+            </div>
+            <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md p-4">
+              {chartData.length === 0 ? (
+                <div style={{ color: C.textFaint }} className="text-sm text-center py-6">
+                  Sem aulas nesse recorte ainda.
+                </div>
+              ) : (
+                <div className="flex items-end gap-2 overflow-x-auto" style={{ minHeight: 160 }}>
+                  {chartData.map((b) => {
+                    const barColor = b.taxa >= 70 ? C.oliveBright : b.taxa >= 40 ? C.brass : C.red;
+                    return (
+                      <div key={b.key} className="flex flex-col items-center gap-1 shrink-0" style={{ width: 44 }}>
+                        <div style={{ color: C.textDim }} className="text-xs tabular-nums">
+                          {b.taxa}%
+                        </div>
+                        <div style={{ background: C.bgRaised, height: 120, width: 22 }} className="rounded-t-sm overflow-hidden flex items-end">
+                          <div style={{ background: barColor, height: `${b.taxa}%`, width: "100%" }} />
+                        </div>
+                        <div style={{ color: C.textFaint }} className="text-xs text-center whitespace-nowrap">
+                          {b.label}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           {porUnidade.length > 0 && (
@@ -237,8 +361,65 @@ export default function Dashboard({ units, students, classes, attendance }) {
               )}
             </div>
           </div>
+
+          {selectedStudent && (
+            <div>
+              <SectionTitle>Histórico de presenças — {selectedStudent.name}</SectionTitle>
+              <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md overflow-hidden">
+                {historicoAluno.length === 0 && (
+                  <div style={{ color: C.textFaint }} className="text-sm px-4 py-6 text-center">
+                    Nenhuma presença registrada ainda.
+                  </div>
+                )}
+                {historicoAluno.map((h) => (
+                  <div key={h.id} style={{ borderColor: C.lineSoft }} className="border-b last:border-0 flex items-center justify-between px-4 py-2.5">
+                    <div>
+                      <div style={{ color: C.text }} className="text-sm">
+                        {fmtDate(h.date)} · {h.period}
+                      </div>
+                      <div style={{ color: C.textFaint }} className="text-xs">
+                        {h.teacherName} · {h.unitName}
+                        {h.hasPhoto ? " · com foto" : ""}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </>
       )}
+
+      <div>
+        <SectionTitle>Distribuição por grau{unitId ? ` — ${units.find((u) => u.id === unitId)?.name || ""}` : ""}</SectionTitle>
+        <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md overflow-hidden">
+          {alunosParaGrau.length === 0 ? (
+            <div style={{ color: C.textFaint }} className="text-sm px-4 py-6 text-center">
+              Nenhum aluno cadastrado nesse recorte.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <tbody>
+                {porGrau.map((r) => (
+                  <tr key={r.grau} style={{ borderColor: C.lineSoft }} className="border-b last:border-0">
+                    <td style={{ color: r.grau === "Sem grau definido" ? C.textFaint : C.text }} className="px-4 py-2 whitespace-nowrap">
+                      {r.grau}
+                    </td>
+                    <td className="px-4 py-2 w-full">
+                      <div style={{ background: C.bgRaised }} className="h-2 rounded-full overflow-hidden">
+                        <div style={{ background: C.brass, width: `${(r.count / maxGrauCount) * 100}%` }} className="h-full" />
+                      </div>
+                    </td>
+                    <td style={{ color: C.textDim }} className="px-4 py-2 text-right font-semibold tabular-nums">
+                      {r.count}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

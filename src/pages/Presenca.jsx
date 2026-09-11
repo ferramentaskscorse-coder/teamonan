@@ -91,14 +91,23 @@ export default function Presenca({ units, students, classes, attendance }) {
           <FieldLabel>Professor</FieldLabel>
           <Select value={selTeacher} onChange={setSelTeacher} placeholder="Selecione o professor" options={professores.map((t) => ({ value: t.id, label: t.name }))} />
         </div>
-        <div className="col-span-2 sm:col-span-1">
+        <div className="col-span-2 sm:col-span-1" style={{ minWidth: 0 }}>
           <FieldLabel>Data</FieldLabel>
           <input
             type="date"
             value={selDate}
             onChange={(e) => setSelDate(e.target.value)}
-            style={{ background: C.bgRaised, borderColor: C.line, color: C.text, height: "42px", boxSizing: "border-box" }}
-            className="border rounded-md px-3 py-2 text-sm outline-none w-full"
+            style={{
+              background: C.bgRaised,
+              borderColor: C.line,
+              color: C.text,
+              height: "42px",
+              boxSizing: "border-box",
+              width: "100%",
+              maxWidth: "100%",
+              minWidth: 0,
+            }}
+            className="border rounded-md px-3 py-2 text-sm outline-none"
           />
         </div>
         <div className="col-span-2 sm:col-span-1">
