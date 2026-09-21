@@ -35,16 +35,23 @@ export default function AlunoAuth({ onBack }) {
 
   async function handleLogin(e) {
     e.preventDefault();
-    if (!loginCpf.trim() || !loginSenha) return;
+    if (!loginCpf.trim()) return;
     setBusy(true);
     setError("");
     try {
       const entry = await getCpfIndexEntry(loginCpf);
       if (entry && !entry.authEmail) {
-        // tem cadastro (feito pela equipe), mas ninguém criou login ainda
+        // tem cadastro (feito pela equipe), mas ninguém criou login ainda —
+        // isso vale mesmo que a pessoa não tenha digitado nada em "senha"
+        // (ela não teria mesmo, já que ainda não existe uma).
         setClaimStudentId(entry.studentId);
         setClaimCpf(loginCpf);
         setMode("concluir");
+        setBusy(false);
+        return;
+      }
+      if (!loginSenha) {
+        setError("Digite sua senha.");
         setBusy(false);
         return;
       }
