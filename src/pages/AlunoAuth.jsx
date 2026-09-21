@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { collection, onSnapshot, getDocs, addDoc, updateDoc, doc } from "firebase/firestore";
 import { updateEmail } from "firebase/auth";
-import { signUpAluno, loginAluno, setCpfIndex, requestPasswordReset, cpfToEmail, db } from "../firebase";
+import { signUpAluno, loginAluno, setCpfIndex, requestPasswordReset, cpfToEmail, getCpfIndexEntry, claimExistingStudent, db } from "../firebase";
 import { C, PERIODS } from "../theme";
 import { Select, FieldLabel } from "../ui";
 import logo from "../assets/logo.jpg";
@@ -39,9 +39,49 @@ export default function AlunoAuth({ onBack }) {
     setBusy(true);
     setError("");
     try {
+      const entry = await getCpfIndexEntry(loginCpf);
+      if (entry && !entry.authEmail) {
+        // tem cadastro (feito pela equipe), mas ninguém criou login ainda
+        setClaimStudentId(entry.studentId);
+        setClaimCpf(loginCpf);
+        setMode("concluir");
+        setBusy(false);
+        return;
+      }
       await loginAluno(loginCpf, loginSenha);
     } catch (err) {
       setError("CPF ou senha incorretos.");
+    }
+    setBusy(false);
+  }
+
+  // -------- concluir cadastro (cpf já existe, sem login ainda) --------
+  const [claimStudentId, setClaimStudentId] = useState(null);
+  const [claimCpf, setClaimCpf] = useState("");
+  const [claimSenha, setClaimSenha] = useState("");
+  const [claimConfirmSenha, setClaimConfirmSenha] = useState("");
+  const [claimEmail, setClaimEmail] = useState("");
+
+  async function handleClaim(e) {
+    e.preventDefault();
+    setError("");
+    if (claimSenha.length < 6) {
+      setError("A senha precisa ter pelo menos 6 caracteres.");
+      return;
+    }
+    if (claimSenha !== claimConfirmSenha) {
+      setError("As senhas não conferem.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await claimExistingStudent(claimStudentId, claimCpf, claimSenha, claimEmail.trim() || null);
+    } catch (err) {
+      if (err.code === "auth/email-already-in-use") {
+        setError('Esse CPF já tem uma senha criada. Use a opção "Entrar".');
+      } else {
+        setError("Não consegui concluir o cadastro. Tente de novo.");
+      }
     }
     setBusy(false);
   }
@@ -56,6 +96,14 @@ export default function AlunoAuth({ onBack }) {
     setError("");
     setInfo("");
     try {
+      const entry = await getCpfIndexEntry(forgotCpf);
+      if (entry && !entry.authEmail) {
+        setClaimStudentId(entry.studentId);
+        setClaimCpf(forgotCpf);
+        setMode("concluir");
+        setBusy(false);
+        return;
+      }
       const result = await requestPasswordReset(forgotCpf);
       if (!result.hasRealEmail) {
         setError("Esse cadastro não tem e-mail de recuperação salvo. Peça para a equipe te ajudar a trocar a senha.");
@@ -167,7 +215,7 @@ export default function AlunoAuth({ onBack }) {
           </div>
         </div>
 
-        {mode !== "forgot" && (
+        {mode !== "forgot" && mode !== "concluir" && (
           <div style={{ borderColor: C.line }} className="border-b flex gap-1">
             {[
               ["login", "Entrar"],
@@ -252,6 +300,60 @@ export default function AlunoAuth({ onBack }) {
             )}
             <button type="submit" disabled={busy} style={{ background: C.red, color: C.text }} className="rounded-md py-2 text-sm font-semibold disabled:opacity-60">
               Enviar link de recuperação
+            </button>
+            <button type="button" onClick={() => switchMode("login")} style={{ color: C.textFaint }} className="text-xs text-center underline underline-offset-2">
+              Voltar para o login
+            </button>
+          </form>
+        )}
+
+        {mode === "concluir" && (
+          <form onSubmit={handleClaim} className="flex flex-col gap-3">
+            <div style={{ color: C.text }} className="text-sm font-semibold text-center">
+              Encontramos seu cadastro!
+            </div>
+            <div style={{ color: C.textDim }} className="text-xs leading-relaxed text-center">
+              Seus dados já estão no sistema — só falta criar uma senha de acesso.
+            </div>
+            <div>
+              <FieldLabel>Senha (mínimo 6 caracteres)</FieldLabel>
+              <input
+                type="password"
+                value={claimSenha}
+                onChange={(e) => setClaimSenha(e.target.value)}
+                autoFocus
+                style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+                className="border rounded-md px-3 py-2 text-sm outline-none w-full"
+              />
+            </div>
+            <div>
+              <FieldLabel>Confirmar senha</FieldLabel>
+              <input
+                type="password"
+                value={claimConfirmSenha}
+                onChange={(e) => setClaimConfirmSenha(e.target.value)}
+                style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+                className="border rounded-md px-3 py-2 text-sm outline-none w-full"
+              />
+            </div>
+            <div>
+              <FieldLabel>E-mail de recuperação (opcional)</FieldLabel>
+              <input
+                type="email"
+                value={claimEmail}
+                onChange={(e) => setClaimEmail(e.target.value)}
+                placeholder="Só é usado se você esquecer a senha"
+                style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+                className="border rounded-md px-3 py-2 text-sm outline-none w-full"
+              />
+            </div>
+            {error && (
+              <div style={{ color: C.red }} className="text-xs">
+                {error}
+              </div>
+            )}
+            <button type="submit" disabled={busy} style={{ background: C.red, color: C.text }} className="rounded-md py-2 text-sm font-semibold disabled:opacity-60">
+              Concluir cadastro
             </button>
             <button type="button" onClick={() => switchMode("login")} style={{ color: C.textFaint }} className="text-xs text-center underline underline-offset-2">
               Voltar para o login

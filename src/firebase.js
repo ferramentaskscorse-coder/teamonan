@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import {
   getAuth,
   signInAnonymously,
@@ -8,6 +8,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
+  updateEmail,
 } from "firebase/auth";
 
 // Todas essas chaves vêm do arquivo .env (veja .env.example).
@@ -71,15 +72,43 @@ export async function setCpfIndex(cpf, authEmail, uid) {
   await setDoc(doc(db, "cpfIndex", cpfDigits(cpf)), { authEmail, uid });
 }
 
-async function resolveAuthEmail(cpf) {
+// Retorna o registro do índice (ou null se o CPF nunca apareceu por lá).
+// { studentId, authEmail } — authEmail vazio/null quer dizer "tem cadastro
+// mas ninguém criou login ainda" (ex: cadastro feito manualmente pela equipe).
+export async function getCpfIndexEntry(cpf) {
   const snap = await getDoc(doc(db, "cpfIndex", cpfDigits(cpf)));
-  return snap.exists() ? snap.data().authEmail : null;
+  return snap.exists() ? snap.data() : null;
+}
+
+async function resolveAuthEmail(cpf) {
+  const entry = await getCpfIndexEntry(cpf);
+  return entry?.authEmail || null;
 }
 
 export async function loginAluno(cpf, senha) {
   // contas criadas antes de existir o índice caem no e-mail sintético direto
   const authEmail = (await resolveAuthEmail(cpf)) || cpfToEmail(cpf);
   return signInWithEmailAndPassword(auth, authEmail, senha);
+}
+
+// "Concluir cadastro" — para quem já tem um registro em students (feito
+// manualmente pela equipe) mas nunca criou login. Cria a conta, vincula o
+// uid ao cadastro já existente (em vez de criar um novo) e atualiza o índice.
+export async function claimExistingStudent(studentId, cpf, senha, recoveryEmail) {
+  const cred = await signUpAluno(cpf, senha);
+  const uid = cred.user.uid;
+  let authEmail = cpfToEmail(cpf);
+  if (recoveryEmail) {
+    try {
+      await updateEmail(cred.user, recoveryEmail);
+      authEmail = recoveryEmail;
+    } catch (e) {
+      // segue com o e-mail sintético se não conseguir trocar
+    }
+  }
+  await updateDoc(doc(db, "students", studentId), { uid });
+  await setCpfIndex(cpf, authEmail, uid);
+  return cred;
 }
 
 // Nunca lança erro — a tela sempre mostra uma mensagem amigável.

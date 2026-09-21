@@ -1,8 +1,8 @@
 import { useState, useRef } from "react";
-import { collection, addDoc, updateDoc, deleteDoc, doc } from "firebase/firestore";
+import { collection, addDoc, updateDoc, deleteDoc, doc, setDoc, getDoc, getDocs } from "firebase/firestore";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
-import { Plus, Trash2, Pencil, X, Mic, Upload, Loader2 } from "lucide-react";
+import { Plus, Trash2, Pencil, X, Mic, Upload, Loader2, AlertTriangle } from "lucide-react";
 import { db } from "../firebase";
 import { C, PERIODS, GRAUS } from "../theme";
 import { Select, Modal } from "../ui";
@@ -30,6 +30,7 @@ export default function Cadastros({ units, students }) {
         {[
           ["unidades", "Unidades"],
           ["pessoas", "Alunos e Professores"],
+          ["manutencao", "Manutenção"],
         ].map(([key, label]) => (
           <button
             key={key}
@@ -52,6 +53,117 @@ export default function Cadastros({ units, students }) {
       )}
 
       {tab === "pessoas" && <PeopleList units={units} students={students} />}
+      {tab === "manutencao" && <Manutencao students={students} />}
+    </div>
+  );
+}
+
+function Manutencao({ students }) {
+  const [migrando, setMigrando] = useState(false);
+  const [migracaoResultado, setMigracaoResultado] = useState("");
+  const [confirmZerar, setConfirmZerar] = useState(false);
+  const [zerando, setZerando] = useState(false);
+  const [zeradoResultado, setZeradoResultado] = useState("");
+
+  async function migrarCadastrosAntigos() {
+    setMigrando(true);
+    setMigracaoResultado("");
+    let count = 0;
+    for (const s of students) {
+      if (s.uid) continue;
+      const cpfKey = (s.cpf || "").replace(/\D/g, "");
+      if (!cpfKey) continue;
+      const ref = doc(db, "cpfIndex", cpfKey);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) {
+        await setDoc(ref, { studentId: s.id, authEmail: null });
+        count++;
+      }
+    }
+    setMigrando(false);
+    setMigracaoResultado(count > 0 ? `${count} cadastro(s) preparado(s) para login.` : "Todos os cadastros já estavam prontos.");
+  }
+
+  async function zerarPresencas() {
+    setZerando(true);
+    setConfirmZerar(false);
+    const [classesSnap, attendanceSnap] = await Promise.all([getDocs(collection(db, "classes")), getDocs(collection(db, "attendance"))]);
+    for (const d of attendanceSnap.docs) await deleteDoc(d.ref);
+    for (const d of classesSnap.docs) await deleteDoc(d.ref);
+    setZerando(false);
+    setZeradoResultado(`Apagadas ${attendanceSnap.docs.length} presença(s) e ${classesSnap.docs.length} aula(s). Os cadastros não foram afetados.`);
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md p-4 flex flex-col gap-3">
+        <div style={{ color: C.text }} className="font-semibold text-sm">
+          Preparar cadastros antigos para login
+        </div>
+        <div style={{ color: C.textDim }} className="text-xs leading-relaxed">
+          Cadastros feitos manualmente pela equipe antes de existir o login por CPF não têm essa ligação ainda. Rode isso uma vez pra
+          habilitar o botão "Concluir cadastro" na tela de login pra essas pessoas. Não afeta quem já tem login.
+        </div>
+        <button
+          onClick={migrarCadastrosAntigos}
+          disabled={migrando}
+          style={{ background: C.bgRaised, borderColor: C.line, color: C.textDim }}
+          className="border rounded-md py-2 text-sm font-medium disabled:opacity-60"
+        >
+          {migrando ? "Preparando..." : "Preparar cadastros antigos"}
+        </button>
+        {migracaoResultado && (
+          <div style={{ color: C.oliveBright }} className="text-xs">
+            {migracaoResultado}
+          </div>
+        )}
+      </div>
+
+      <div style={{ background: C.bgPanel, borderColor: C.red }} className="border rounded-md p-4 flex flex-col gap-3">
+        <div style={{ color: C.red }} className="font-semibold text-sm flex items-center gap-2">
+          <AlertTriangle size={16} />
+          Zona de risco
+        </div>
+        <div style={{ color: C.textDim }} className="text-xs leading-relaxed">
+          Apaga TODAS as aulas e presenças já registradas (de todas as unidades). Os cadastros de alunos e professores não são
+          afetados. Use antes de começar o uso real, para zerar dados de teste.
+        </div>
+        <button
+          onClick={() => setConfirmZerar(true)}
+          disabled={zerando}
+          style={{ background: C.red, color: C.text }}
+          className="rounded-md py-2 text-sm font-semibold disabled:opacity-60"
+        >
+          {zerando ? "Apagando..." : "Apagar todas as aulas e presenças"}
+        </button>
+        {zeradoResultado && (
+          <div style={{ color: C.oliveBright }} className="text-xs">
+            {zeradoResultado}
+          </div>
+        )}
+      </div>
+
+      {confirmZerar && (
+        <Modal onClose={() => setConfirmZerar(false)}>
+          <div className="flex flex-col items-center text-center gap-3 p-2">
+            <div style={{ background: C.redDim }} className="w-11 h-11 rounded-full flex items-center justify-center">
+              <AlertTriangle size={20} color={C.text} />
+            </div>
+            <div style={{ color: C.text }} className="font-semibold">
+              Tem certeza?
+            </div>
+            <div style={{ color: C.textDim }} className="text-sm leading-relaxed">
+              Isso vai apagar permanentemente todas as aulas e presenças registradas. Não tem como desfazer.
+            </div>
+            <button onClick={zerarPresencas} style={{ background: C.red, color: C.text }} className="rounded-md px-4 py-2 text-sm font-semibold w-full">
+              Sim, apagar tudo
+            </button>
+            <button onClick={() => setConfirmZerar(false)} style={{ color: C.textFaint }} className="text-xs underline underline-offset-2">
+              Cancelar
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -196,7 +308,13 @@ function PeopleList({ units, students }) {
     if (editingId) {
       await updateDoc(doc(db, "students", editingId), payload);
     } else {
-      await addDoc(collection(db, "students"), payload);
+      const ref = await addDoc(collection(db, "students"), payload);
+      const cpfKey = payload.cpf.replace(/\D/g, "");
+      if (cpfKey) {
+        // marca esse CPF como "tem cadastro, mas ainda sem login" — é isso
+        // que permite a tela de login mostrar "Concluir cadastro" depois.
+        await setDoc(doc(db, "cpfIndex", cpfKey), { studentId: ref.id, authEmail: null });
+      }
     }
     resetForm();
     setBusy(false);
@@ -504,7 +622,11 @@ function ImportModal({ units, onClose }) {
       const periodo = matchPeriodo(periodoRaw);
       const grau = matchGrau(grauRaw);
 
-      await addDoc(collection(db, "students"), { name, cpf, tipo, unitId, periodo, grau });
+      const ref = await addDoc(collection(db, "students"), { name, cpf, tipo, unitId, periodo, grau });
+      const cpfKey = cpf.replace(/\D/g, "");
+      if (cpfKey) {
+        await setDoc(doc(db, "cpfIndex", cpfKey), { studentId: ref.id, authEmail: null });
+      }
       added++;
     }
     setResult({ added, errors });
