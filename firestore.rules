@@ -41,7 +41,13 @@ service cloud.firestore {
     match /students/{studentId} {
       allow read: if request.auth != null;
       allow create: if isAdmin() || isSelf(request.resource.data.uid);
-      allow update: if isAdmin() || isSelf(resource.data.uid) || (isUnclaimed() && isSelf(request.resource.data.uid));
+      // Uma pessoa pode editar o PRÓPRIO cadastro, mas nunca o próprio
+      // status de aprovação — isso só muda por quem aprova (a "aprovação",
+      // abaixo, é uma gravação separada tocando só em status/approvedAt).
+      allow update: if isAdmin()
+        || (isSelf(resource.data.uid) && request.resource.data.status == resource.data.status)
+        || (isUnclaimed() && isSelf(request.resource.data.uid))
+        || (request.auth != null && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "approvedAt"]));
       allow delete: if isAdmin();
     }
 

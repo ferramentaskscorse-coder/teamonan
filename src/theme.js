@@ -30,8 +30,29 @@ export const GRAUS = [
   "Preto",
 ];
 
+// Grau azul claro pra cima conta como professor — quem ainda não tem grau
+// ou está abaixo disso é aluno. Uma única fonte de verdade usada em todo
+// formulário de cadastro, pra Tipo nunca precisar ser escolhido à mão.
+const GRAUS_PROFESSOR = new Set(["Azul escuro", "Azul escuro ponta preto", "Preto"]);
+
+export function tipoFromGrau(grau) {
+  return GRAUS_PROFESSOR.has(grau) ? "professor" : "aluno";
+}
+
 export function todayISO() {
   const d = new Date();
+  return d.toISOString().slice(0, 10);
+}
+
+// Janela de 7 dias em que o próprio aluno pode alterar o grau, liberada
+// pela equipe quando avisa "a graduação foi hoje" numa unidade.
+export function grauEdicaoLiberada(unit) {
+  return !!unit?.grauLiberadoAte && unit.grauLiberadoAte >= todayISO();
+}
+
+export function seteDiasAPartirDeHoje() {
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
   return d.toISOString().slice(0, 10);
 }
 

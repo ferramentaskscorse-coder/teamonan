@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { collection, addDoc, deleteDoc, doc } from "firebase/firestore";
+import { collection, addDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
 import { Check, AlertTriangle } from "lucide-react";
 import { db } from "../firebase";
 import { C, PERIODS, fmtDate, todayISO } from "../theme";
@@ -72,7 +72,7 @@ export default function Presenca({ units, students, classes, attendance }) {
         });
         classId = ref.id;
       }
-      await addDoc(collection(db, "attendance"), { classId, studentId: personId });
+      await addDoc(collection(db, "attendance"), { classId, studentId: personId, confirmedAt: serverTimestamp() });
     } finally {
       setBusy(false);
     }

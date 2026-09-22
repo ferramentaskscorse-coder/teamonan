@@ -1,16 +1,11 @@
 import { useState, useRef } from "react";
-import { collection, addDoc, updateDoc, deleteDoc, doc, setDoc, getDoc, getDocs } from "firebase/firestore";
+import { collection, addDoc, updateDoc, deleteDoc, doc, setDoc, getDoc, getDocs, serverTimestamp } from "firebase/firestore";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
-import { Plus, Trash2, Pencil, X, Mic, Upload, Loader2, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Pencil, X, Mic, Upload, Loader2, AlertTriangle, Check, Clock } from "lucide-react";
 import { db } from "../firebase";
-import { C, PERIODS, GRAUS } from "../theme";
+import { C, PERIODS, GRAUS, tipoFromGrau, fmtDate, grauEdicaoLiberada, seteDiasAPartirDeHoje } from "../theme";
 import { Select, Modal } from "../ui";
-
-const TIPOS = [
-  { value: "aluno", label: "Aluno" },
-  { value: "professor", label: "Professor" },
-];
 
 function normalize(str) {
   return (str || "")
@@ -23,19 +18,21 @@ function normalize(str) {
 
 export default function Cadastros({ units, students }) {
   const [tab, setTab] = useState("unidades");
+  const pendentesCount = students.filter((s) => s.status === "pendente").length;
 
   return (
     <div className="max-w-2xl">
-      <div style={{ borderColor: C.line }} className="border-b flex gap-1 mb-4">
+      <div style={{ borderColor: C.line }} className="border-b flex gap-1 mb-4 flex-wrap">
         {[
           ["unidades", "Unidades"],
           ["pessoas", "Alunos e Professores"],
+          ["aprovacoes", `Aprovações${pendentesCount ? ` (${pendentesCount})` : ""}`],
           ["manutencao", "Manutenção"],
         ].map(([key, label]) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            style={{ color: tab === key ? C.text : C.textFaint, borderColor: tab === key ? C.red : "transparent" }}
+            style={{ color: tab === key ? C.text : key === "aprovacoes" && pendentesCount ? C.brass : C.textFaint, borderColor: tab === key ? C.red : "transparent" }}
             className="text-sm px-3 py-2 border-b-2 -mb-px font-medium"
           >
             {label}
@@ -43,17 +40,163 @@ export default function Cadastros({ units, students }) {
         ))}
       </div>
 
-      {tab === "unidades" && (
-        <SimpleList
-          items={units}
-          collectionName="units"
-          placeholder="Nome da unidade"
-          onAdd={(name) => addDoc(collection(db, "units"), { name })}
-        />
-      )}
-
+      {tab === "unidades" && <UnitList units={units} />}
       {tab === "pessoas" && <PeopleList units={units} students={students} />}
+      {tab === "aprovacoes" && <Aprovacoes students={students} units={units} />}
       {tab === "manutencao" && <Manutencao students={students} />}
+    </div>
+  );
+}
+
+function Aprovacoes({ students, units }) {
+  const pendentes = students.filter((s) => s.status === "pendente");
+
+  async function aprovar(id) {
+    await updateDoc(doc(db, "students", id), { status: "aprovado", approvedAt: serverTimestamp() });
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div style={{ color: C.textDim }} className="text-xs leading-relaxed">
+        Novos cadastros feitos pela própria pessoa (aluno ou professor) ficam aqui até alguém da equipe ou um professor já
+        aprovado confirmar. Quem aprovar primeiro resolve — some da lista dos dois.
+      </div>
+      {pendentes.length === 0 && (
+        <div style={{ background: C.bgPanel, borderColor: C.line, color: C.textFaint }} className="border rounded-md p-6 text-sm text-center">
+          Nenhum cadastro esperando aprovação.
+        </div>
+      )}
+      {pendentes.map((s) => (
+        <div key={s.id} style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md p-4 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div style={{ color: C.text }} className="text-sm truncate">
+              {s.name || "(sem nome)"}
+              <span style={{ color: s.tipo === "professor" ? C.brass : C.textFaint }} className="text-xs ml-2">
+                {s.tipo === "professor" ? "Professor" : "Aluno"}
+              </span>
+            </div>
+            <div style={{ color: C.textFaint }} className="text-xs truncate">
+              {units.find((u) => u.id === s.unitId)?.name || "sem unidade"}
+              {s.periodo ? ` · ${s.periodo}` : ""}
+              {s.grau ? ` · ${s.grau}` : ""}
+            </div>
+          </div>
+          <button
+            onClick={() => aprovar(s.id)}
+            style={{ background: C.red, color: C.text }}
+            className="rounded-md px-3 py-2 text-sm font-medium flex items-center gap-1.5 shrink-0"
+          >
+            <Check size={14} />
+            Aprovar
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function UnitList({ units }) {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editValue, setEditValue] = useState("");
+
+  async function handleAdd(e) {
+    e.preventDefault();
+    if (!name.trim() || busy) return;
+    setBusy(true);
+    await addDoc(collection(db, "units"), { name: name.trim() });
+    setName("");
+    setBusy(false);
+  }
+
+  async function handleRemove(id) {
+    await deleteDoc(doc(db, "units", id));
+  }
+
+  function startEdit(u) {
+    setEditingId(u.id);
+    setEditValue(u.name);
+  }
+
+  async function saveEdit(id) {
+    if (!editValue.trim()) return;
+    await updateDoc(doc(db, "units", id), { name: editValue.trim() });
+    setEditingId(null);
+  }
+
+  async function liberarGrau(id) {
+    await updateDoc(doc(db, "units", id), { grauLiberadoAte: seteDiasAPartirDeHoje() });
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <form onSubmit={handleAdd} className="flex gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Nome da unidade"
+          style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+          className="border rounded-md px-3 py-2 text-sm outline-none flex-1"
+        />
+        <button type="submit" disabled={busy} style={{ background: C.red, color: C.text }} className="rounded-md px-3 flex items-center justify-center disabled:opacity-60">
+          <Plus size={16} />
+        </button>
+      </form>
+      <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md overflow-hidden">
+        {units.length === 0 && (
+          <div style={{ color: C.textFaint }} className="text-sm px-4 py-6 text-center">
+            Nada cadastrado ainda.
+          </div>
+        )}
+        {[...units].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")).map((u) => {
+          const liberado = grauEdicaoLiberada(u);
+          return (
+            <div key={u.id} style={{ borderColor: C.lineSoft }} className="border-b last:border-0 flex items-center justify-between px-4 py-2.5 gap-2">
+              {editingId === u.id ? (
+                <>
+                  <input
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    autoFocus
+                    style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+                    className="border rounded-md px-2 py-1 text-sm outline-none flex-1"
+                  />
+                  <button onClick={() => saveEdit(u.id)} style={{ color: C.oliveBright }} className="text-xs font-semibold shrink-0">
+                    Salvar
+                  </button>
+                  <button onClick={() => setEditingId(null)} style={{ color: C.textFaint }} className="shrink-0">
+                    <X size={14} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="min-w-0">
+                    <div style={{ color: C.text }} className="text-sm">
+                      {u.name}
+                    </div>
+                    <div style={{ color: liberado ? C.oliveBright : C.textFaint }} className="text-xs flex items-center gap-1">
+                      <Clock size={11} />
+                      {liberado ? `Troca de grau liberada até ${fmtDate(u.grauLiberadoAte)}` : "Troca de grau bloqueada"}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button onClick={() => liberarGrau(u.id)} style={{ background: C.bgRaised, borderColor: C.line, color: C.textDim }} className="border rounded-md px-2 py-1 text-xs">
+                      Liberar 7 dias
+                    </button>
+                    <button onClick={() => startEdit(u)} style={{ color: C.textFaint }}>
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={() => handleRemove(u.id)} style={{ color: C.textFaint }}>
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -70,6 +213,10 @@ function Manutencao({ students }) {
     setMigracaoResultado("");
     let count = 0;
     for (const s of students) {
+      // cadastros feitos antes de existir a aprovação contam como já aprovados
+      if (!s.status) {
+        await updateDoc(doc(db, "students", s.id), { status: "aprovado" });
+      }
       if (s.uid) continue;
       const cpfKey = (s.cpf || "").replace(/\D/g, "");
       if (!cpfKey) continue;
@@ -258,7 +405,7 @@ function SimpleList({ items, collectionName, onAdd, placeholder, allowEdit }) {
   );
 }
 
-const EMPTY_FORM = { name: "", cpf: "", tipo: "aluno", unitId: "", periodo: "", grau: "" };
+const EMPTY_FORM = { name: "", cpf: "", unitId: "", periodo: "", grau: "" };
 
 function PeopleList({ units, students }) {
   const [form, setForm] = useState(EMPTY_FORM);
@@ -267,7 +414,7 @@ function PeopleList({ units, students }) {
   const [importOpen, setImportOpen] = useState(false);
   const [formError, setFormError] = useState("");
 
-  const isProfessor = form.tipo === "professor";
+  const isProfessor = tipoFromGrau(form.grau) === "professor";
 
   function setField(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -300,7 +447,7 @@ function PeopleList({ units, students }) {
     const payload = {
       name: form.name.trim(),
       cpf: form.cpf.trim(),
-      tipo: form.tipo,
+      tipo: tipoFromGrau(form.grau),
       unitId: form.unitId || "",
       periodo: form.periodo || "",
       grau: form.grau || "",
@@ -308,7 +455,9 @@ function PeopleList({ units, students }) {
     if (editingId) {
       await updateDoc(doc(db, "students", editingId), payload);
     } else {
-      const ref = await addDoc(collection(db, "students"), payload);
+      // cadastro feito pela própria equipe já entra aprovado — a aprovação
+      // é pra filtrar quem se autocadastra, não quem a equipe já digitou.
+      const ref = await addDoc(collection(db, "students"), { ...payload, status: "aprovado" });
       const cpfKey = payload.cpf.replace(/\D/g, "");
       if (cpfKey) {
         // marca esse CPF como "tem cadastro, mas ainda sem login" — é isso
@@ -324,7 +473,6 @@ function PeopleList({ units, students }) {
     setForm({
       name: s.name || "",
       cpf: s.cpf || "",
-      tipo: s.tipo || "aluno",
       unitId: s.unitId || "",
       periodo: s.periodo || "",
       grau: s.grau || "",
@@ -363,7 +511,12 @@ function PeopleList({ units, students }) {
             style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
             className="border rounded-md px-3 py-2 text-sm outline-none"
           />
-          <Select value={form.tipo} onChange={(v) => setField("tipo", v)} placeholder="Tipo" options={TIPOS} />
+          <Select
+            value={form.grau}
+            onChange={(v) => setField("grau", v)}
+            placeholder="Grau (ainda não definido)"
+            options={GRAUS.map((g) => ({ value: g, label: g }))}
+          />
           <Select
             value={form.unitId}
             onChange={(v) => setField("unitId", v)}
@@ -371,25 +524,17 @@ function PeopleList({ units, students }) {
             options={units.map((u) => ({ value: u.id, label: u.name }))}
           />
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <Select
-            value={form.periodo}
-            onChange={(v) => setField("periodo", v)}
-            placeholder={isProfessor ? "Período (opcional)" : "Período"}
-            options={PERIODS.map((p) => ({ value: p, label: p }))}
-          />
-          <Select
-            value={form.grau}
-            onChange={(v) => setField("grau", v)}
-            placeholder="Grau (ainda não definido)"
-            options={GRAUS.map((g) => ({ value: g, label: g }))}
-          />
+        <Select
+          value={form.periodo}
+          onChange={(v) => setField("periodo", v)}
+          placeholder={isProfessor ? "Período (opcional)" : "Período"}
+          options={PERIODS.map((p) => ({ value: p, label: p }))}
+        />
+        <div style={{ color: C.textFaint }} className="text-xs -mt-1">
+          {form.grau
+            ? `Grau "${form.grau}" → cadastro como ${isProfessor ? "Professor" : "Aluno"}.`
+            : "Sem grau selecionado → cadastro como Aluno. Grau azul claro pra cima vira Professor automaticamente."}
         </div>
-        {isProfessor && (
-          <div style={{ color: C.textFaint }} className="text-xs -mt-1">
-            Professor não precisa de unidade ou período — preencha só se fizer sentido.
-          </div>
-        )}
         {formError && (
           <div style={{ color: C.red }} className="text-xs -mt-1">
             {formError}
@@ -567,7 +712,8 @@ function VoiceFillButton({ units, setForm }) {
 }
 
 // ---------------------------------------------------------------------------
-// Importação em lote — CSV ou XLSX com colunas: Nome, CPF, Tipo, Unidade, Periodo, Grau
+// Importação em lote — CSV ou XLSX com colunas: Nome, CPF, Unidade, Periodo, Grau
+// (Tipo não é mais uma coluna — é derivado do Grau via tipoFromGrau)
 // ---------------------------------------------------------------------------
 function ImportModal({ units, onClose }) {
   const [busy, setBusy] = useState(false);
@@ -582,10 +728,6 @@ function ImportModal({ units, onClose }) {
   function matchGrau(value) {
     return GRAUS.find((g) => normalize(g) === normalize(value)) || "";
   }
-  function matchTipo(value) {
-    return normalize(value) === "professor" ? "professor" : "aluno";
-  }
-
   async function processRows(rows) {
     let added = 0;
     const errors = [];
@@ -593,10 +735,11 @@ function ImportModal({ units, onClose }) {
       const row = rows[i];
       const name = (row.Nome || row.nome || "").toString().trim();
       const cpf = (row.CPF || row.cpf || "").toString().trim();
-      const tipo = matchTipo(row.Tipo || row.tipo || "aluno");
       const unidadeNome = (row.Unidade || row.unidade || "").toString().trim();
       const periodoRaw = (row["Período"] || row.Periodo || row.periodo || "").toString().trim();
       const grauRaw = (row.Grau || row.grau || "").toString().trim();
+      const grau = matchGrau(grauRaw);
+      const tipo = tipoFromGrau(grau);
 
       if (!name) {
         errors.push(`Linha ${i + 2}: sem nome, ignorada.`);
@@ -620,9 +763,8 @@ function ImportModal({ units, onClose }) {
       }
 
       const periodo = matchPeriodo(periodoRaw);
-      const grau = matchGrau(grauRaw);
 
-      const ref = await addDoc(collection(db, "students"), { name, cpf, tipo, unitId, periodo, grau });
+      const ref = await addDoc(collection(db, "students"), { name, cpf, tipo, unitId, periodo, grau, status: "aprovado" });
       const cpfKey = cpf.replace(/\D/g, "");
       if (cpfKey) {
         await setDoc(doc(db, "cpfIndex", cpfKey), { studentId: ref.id, authEmail: null });
@@ -660,9 +802,9 @@ function ImportModal({ units, onClose }) {
 
   function downloadTemplate() {
     const csv =
-      "Nome,CPF,Tipo,Unidade,Periodo,Grau\n" +
-      "Maria Silva,000.000.000-00,Aluno,Unidade Centro,Manhã,Branco\n" +
-      "Denis Onan Perez de Souza,111.111.111-11,Professor,,,\n";
+      "Nome,CPF,Unidade,Periodo,Grau\n" +
+      "Maria Silva,000.000.000-00,Unidade Centro,Manhã,Branco\n" +
+      "Denis Onan Perez de Souza,111.111.111-11,,,Preto\n";
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -679,8 +821,9 @@ function ImportModal({ units, onClose }) {
           Importar em lote
         </div>
         <div style={{ color: C.textDim }} className="text-xs leading-relaxed">
-          Envie um arquivo .csv ou .xlsx com as colunas <strong>Nome, CPF, Tipo, Unidade, Periodo, Grau</strong>.
-          Tipo deve ser "Aluno" ou "Professor" — para Professor, Unidade/Periodo/Grau podem ficar em branco.
+          Envie um arquivo .csv ou .xlsx com as colunas <strong>Nome, CPF, Unidade, Periodo, Grau</strong>.
+          O grau define automaticamente se a pessoa é Aluno ou Professor: azul claro pra cima vira Professor
+          (e nesse caso Unidade/Periodo podem ficar em branco); abaixo disso, ou sem grau, é Aluno.
         </div>
         <button onClick={downloadTemplate} style={{ color: C.brass }} className="text-xs underline underline-offset-2 text-left">
           Baixar modelo .csv

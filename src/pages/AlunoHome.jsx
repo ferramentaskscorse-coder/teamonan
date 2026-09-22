@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from "firebase/firestore";
-import { Camera, Check, LogOut, Pencil, AlertTriangle, Loader2, Users } from "lucide-react";
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
+import { Camera, Check, LogOut, Pencil, AlertTriangle, Loader2, Users, Clock } from "lucide-react";
 import { db, auth, logoutAny } from "../firebase";
-import { C, PERIODS, GRAUS, fmtDate, todayISO } from "../theme";
+import { C, PERIODS, GRAUS, tipoFromGrau, fmtDate, todayISO, grauEdicaoLiberada } from "../theme";
 import { Select, FieldLabel, Modal } from "../ui";
 import logo from "../assets/logo.jpg";
 
@@ -99,10 +99,24 @@ export default function AlunoHome({ onBack }) {
 
       <div className="flex-1 p-4 sm:p-6 flex flex-col gap-6 max-w-xl mx-auto w-full">
         <ProfileCard me={me} units={units} />
-        {me.tipo === "professor" && (
-          <TurmaCard me={me} units={units} students={students} classes={classes} attendance={attendance} />
+
+        {me.status === "pendente" ? (
+          <div style={{ background: C.bgPanel, borderColor: C.brass, color: C.brass }} className="border rounded-md p-4 text-sm flex items-center gap-2">
+            <Clock size={16} className="shrink-0" />
+            Seu cadastro está aguardando aprovação de um professor ou da equipe. Assim que for aprovado, você já pode
+            marcar presença.
+          </div>
+        ) : (
+          <>
+            {me.tipo === "professor" && (
+              <>
+                <AprovacoesCard students={students} units={units} />
+                <TurmaCard me={me} units={units} students={students} classes={classes} attendance={attendance} />
+              </>
+            )}
+            <CheckInCard me={me} units={units} professores={professores} classes={classes} attendance={attendance} />
+          </>
         )}
-        <CheckInCard me={me} units={units} professores={professores} classes={classes} attendance={attendance} />
       </div>
     </div>
   );
@@ -110,13 +124,12 @@ export default function AlunoHome({ onBack }) {
 
 function CompleteCadastro({ units, onLogout }) {
   const [name, setName] = useState("");
-  const [tipo, setTipo] = useState("aluno");
   const [unitId, setUnitId] = useState("");
   const [periodo, setPeriodo] = useState("");
   const [grau, setGrau] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const isProfessor = tipo === "professor";
+  const isProfessor = tipoFromGrau(grau) === "professor";
 
   // se o login foi feito por CPF, o e-mail interno da conta já traz o CPF —
   // aproveita pra não pedir de novo.
@@ -140,10 +153,11 @@ function CompleteCadastro({ units, onLogout }) {
         uid: auth.currentUser.uid,
         name: name.trim(),
         cpf,
-        tipo,
+        tipo: tipoFromGrau(grau),
         unitId: unitId || "",
         periodo: periodo || "",
         grau: grau || "",
+        status: "pendente",
       });
       // a tela sai sozinha assim que o onSnapshot de students encontrar
       // esse novo registro — não precisa fazer nada aqui.
@@ -181,16 +195,11 @@ function CompleteCadastro({ units, onLogout }) {
           />
         </div>
         <div>
-          <FieldLabel>Você é...</FieldLabel>
-          <Select
-            value={tipo}
-            onChange={setTipo}
-            placeholder="Tipo"
-            options={[
-              { value: "aluno", label: "Aluno" },
-              { value: "professor", label: "Professor" },
-            ]}
-          />
+          <FieldLabel>Grau</FieldLabel>
+          <Select value={grau} onChange={setGrau} placeholder="Grau (ainda não definido)" options={GRAUS.map((g) => ({ value: g, label: g }))} />
+          <div style={{ color: C.textFaint }} className="text-xs mt-1">
+            {grau ? `→ cadastro como ${isProfessor ? "Professor" : "Aluno"}.` : "Sem grau → cadastro como Aluno."}
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Select
@@ -206,7 +215,6 @@ function CompleteCadastro({ units, onLogout }) {
             options={PERIODS.map((p) => ({ value: p, label: p }))}
           />
         </div>
-        <Select value={grau} onChange={setGrau} placeholder="Grau (ainda não definido)" options={GRAUS.map((g) => ({ value: g, label: g }))} />
 
         {error && (
           <div style={{ color: C.red }} className="text-xs">
@@ -232,11 +240,26 @@ function ProfileCard({ me, units }) {
   const [periodo, setPeriodo] = useState(me.periodo || "");
   const [grau, setGrau] = useState(me.grau || "");
   const [busy, setBusy] = useState(false);
+  const isProfessor = tipoFromGrau(grau) === "professor";
+
+  // Grau só é editável pelo próprio aluno dentro da janela de 7 dias que a
+  // equipe libera por unidade (avisando "a graduação foi hoje"). Professor
+  // já tem confiança suficiente pra editar o próprio grau livremente.
+  const minhaUnidade = units.find((u) => u.id === me.unitId);
+  const grauBloqueado = me.tipo !== "professor" && !grauEdicaoLiberada(minhaUnidade);
 
   async function handleSave() {
-    if (!name.trim() || !unitId || !periodo) return;
+    if (!name.trim()) return;
+    if (!isProfessor && (!unitId || !periodo)) return;
+    if (grauBloqueado && grau !== (me.grau || "")) return;
     setBusy(true);
-    await updateDoc(doc(db, "students", me.id), { name: name.trim(), unitId, periodo, grau: grau || "" });
+    await updateDoc(doc(db, "students", me.id), {
+      name: name.trim(),
+      unitId: unitId || "",
+      periodo: periodo || "",
+      grau: grau || "",
+      tipo: tipoFromGrau(grau),
+    });
     setBusy(false);
     setEditing(false);
   }
@@ -269,11 +292,23 @@ function ProfileCard({ me, units }) {
         style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
         className="border rounded-md px-3 py-2 text-sm outline-none"
       />
-      <div className="grid grid-cols-2 gap-2">
-        <Select value={unitId} onChange={setUnitId} placeholder="Unidade" options={units.map((u) => ({ value: u.id, label: u.name }))} />
-        <Select value={periodo} onChange={setPeriodo} placeholder="Período" options={PERIODS.map((p) => ({ value: p, label: p }))} />
+      <Select value={grau} onChange={setGrau} placeholder="Grau (ainda não definido)" options={GRAUS.map((g) => ({ value: g, label: g }))} disabled={grauBloqueado} />
+      <div style={{ color: grauBloqueado ? C.textFaint : C.textFaint }} className="text-xs -mt-1 flex items-center gap-1">
+        {grauBloqueado ? (
+          <>
+            <Clock size={11} />
+            Só muda com autorização da equipe após uma graduação. Fale com seu professor.
+          </>
+        ) : grau ? (
+          `→ ${isProfessor ? "Professor" : "Aluno"}.`
+        ) : (
+          "Sem grau → Aluno."
+        )}
       </div>
-      <Select value={grau} onChange={setGrau} placeholder="Grau (ainda não definido)" options={GRAUS.map((g) => ({ value: g, label: g }))} />
+      <div className="grid grid-cols-2 gap-2">
+        <Select value={unitId} onChange={setUnitId} placeholder={isProfessor ? "Unidade (opcional)" : "Unidade"} options={units.map((u) => ({ value: u.id, label: u.name }))} />
+        <Select value={periodo} onChange={setPeriodo} placeholder={isProfessor ? "Período (opcional)" : "Período"} options={PERIODS.map((p) => ({ value: p, label: p }))} />
+      </div>
       <div className="flex gap-2 mt-1">
         <button onClick={handleSave} disabled={busy} style={{ background: C.red, color: C.text }} className="rounded-md px-3 py-2 text-sm font-semibold flex-1 disabled:opacity-60">
           Salvar
@@ -282,6 +317,50 @@ function ProfileCard({ me, units }) {
           Cancelar
         </button>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AprovacoesCard — só para professores já aprovados: aprovar novos
+// autocadastros (aluno ou professor). Quem aprovar primeiro resolve — some
+// da tela de todo mundo assim que aprovado.
+// ---------------------------------------------------------------------------
+function AprovacoesCard({ students, units }) {
+  const pendentes = students.filter((s) => s.status === "pendente");
+  if (pendentes.length === 0) return null;
+
+  async function aprovar(id) {
+    await updateDoc(doc(db, "students", id), { status: "aprovado", approvedAt: serverTimestamp() });
+  }
+
+  return (
+    <div style={{ background: C.bgPanel, borderColor: C.brass }} className="border rounded-md p-4 flex flex-col gap-3">
+      <div style={{ color: C.brass }} className="font-semibold text-sm flex items-center gap-2">
+        <Clock size={16} />
+        Aprovações pendentes
+      </div>
+      {pendentes.map((s) => (
+        <div key={s.id} style={{ borderColor: C.lineSoft }} className="border-b last:border-0 pb-3 last:pb-0 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div style={{ color: C.text }} className="text-sm truncate">
+              {s.name || "(sem nome)"}
+              <span style={{ color: s.tipo === "professor" ? C.brass : C.textFaint }} className="text-xs ml-2">
+                {s.tipo === "professor" ? "Professor" : "Aluno"}
+              </span>
+            </div>
+            <div style={{ color: C.textFaint }} className="text-xs truncate">
+              {units.find((u) => u.id === s.unitId)?.name || "sem unidade"}
+              {s.periodo ? ` · ${s.periodo}` : ""}
+              {s.grau ? ` · ${s.grau}` : ""}
+            </div>
+          </div>
+          <button onClick={() => aprovar(s.id)} style={{ background: C.red, color: C.text }} className="rounded-md px-3 py-1.5 text-xs font-medium flex items-center gap-1 shrink-0">
+            <Check size={13} />
+            Aprovar
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -340,7 +419,7 @@ function TurmaCard({ me, units, students, classes, attendance }) {
         const ref1 = await addDoc(collection(db, "classes"), { unitId, period: periodo, teacherId: me.id, date });
         classId = ref1.id;
       }
-      await addDoc(collection(db, "attendance"), { classId, studentId: personId });
+      await addDoc(collection(db, "attendance"), { classId, studentId: personId, confirmedAt: serverTimestamp() });
     } finally {
       setBusy(false);
     }
@@ -503,7 +582,13 @@ function CheckInCard({ me, units, professores, classes, attendance }) {
         const ref1 = await addDoc(collection(db, "classes"), { unitId, period: periodo, teacherId, date });
         classId = ref1.id;
       }
-      await addDoc(collection(db, "attendance"), { classId, studentId: me.id, photoUrl: photoDataUrl, selfCheckIn: true });
+      await addDoc(collection(db, "attendance"), {
+        classId,
+        studentId: me.id,
+        photoUrl: photoDataUrl,
+        selfCheckIn: true,
+        confirmedAt: serverTimestamp(),
+      });
       setDone(true);
       setPhotoDataUrl(null);
     } catch (err) {

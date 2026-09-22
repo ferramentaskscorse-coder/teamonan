@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { collection, onSnapshot, getDocs, addDoc, updateDoc, doc } from "firebase/firestore";
 import { updateEmail } from "firebase/auth";
 import { signUpAluno, loginAluno, setCpfIndex, requestPasswordReset, cpfToEmail, getCpfIndexEntry, claimExistingStudent, db } from "../firebase";
-import { C, PERIODS } from "../theme";
+import { C, PERIODS, GRAUS, tipoFromGrau } from "../theme";
 import { Select, FieldLabel } from "../ui";
 import logo from "../assets/logo.jpg";
 
@@ -133,13 +133,13 @@ export default function AlunoAuth({ onBack }) {
   // -------- cadastro --------
   const [name, setName] = useState("");
   const [signupCpf, setSignupCpf] = useState("");
-  const [tipo, setTipo] = useState("aluno");
+  const [grau, setGrau] = useState("");
   const [senha, setSenha] = useState("");
   const [confirmSenha, setConfirmSenha] = useState("");
   const [unitId, setUnitId] = useState("");
   const [periodo, setPeriodo] = useState("");
   const [recoveryEmail, setRecoveryEmail] = useState("");
-  const isProfessor = tipo === "professor";
+  const isProfessor = tipoFromGrau(grau) === "professor";
 
   async function handleSignup(e) {
     e.preventDefault();
@@ -187,16 +187,20 @@ export default function AlunoAuth({ onBack }) {
       const payload = {
         name: name.trim(),
         cpf: signupCpf.trim(),
-        tipo,
+        tipo: tipoFromGrau(grau),
         unitId: unitId || "",
         periodo: periodo || "",
+        grau: grau || "",
         uid,
       };
 
       if (existing) {
+        // cadastro já feito pela equipe antes — já é confiável, não mexe no status
         await updateDoc(doc(db, "students", existing.id), payload);
       } else {
-        await addDoc(collection(db, "students"), { ...payload, grau: "" });
+        // autocadastro novo, ninguém da equipe viu ainda — fica pendente até
+        // um professor ou administrador aprovar
+        await addDoc(collection(db, "students"), { ...payload, status: "pendente" });
       }
 
       // Índice CPF -> e-mail (usado só para login/recuperação de senha). Se
@@ -399,16 +403,11 @@ export default function AlunoAuth({ onBack }) {
               />
             </div>
             <div>
-              <FieldLabel>Você é...</FieldLabel>
-              <Select
-                value={tipo}
-                onChange={setTipo}
-                placeholder="Tipo"
-                options={[
-                  { value: "aluno", label: "Aluno" },
-                  { value: "professor", label: "Professor" },
-                ]}
-              />
+              <FieldLabel>Grau</FieldLabel>
+              <Select value={grau} onChange={setGrau} placeholder="Grau (ainda não definido)" options={GRAUS.map((g) => ({ value: g, label: g }))} />
+              <div style={{ color: C.textFaint }} className="text-xs mt-1">
+                {grau ? `→ cadastro como ${isProfessor ? "Professor" : "Aluno"}.` : "Sem grau → cadastro como Aluno."}
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <Select

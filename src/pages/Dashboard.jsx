@@ -110,6 +110,9 @@ export default function Dashboard({ units, students, classes, attendance }) {
       .map((a) => {
         const cls = classes.find((c) => c.id === a.classId);
         if (!cls) return null;
+        const horaConfirmada = a.confirmedAt?.toDate
+          ? a.confirmedAt.toDate().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+          : null;
         return {
           id: a.id,
           date: cls.date,
@@ -117,6 +120,7 @@ export default function Dashboard({ units, students, classes, attendance }) {
           teacherName: professores.find((p) => p.id === cls.teacherId)?.name || "—",
           unitName: units.find((u) => u.id === cls.unitId)?.name || "—",
           hasPhoto: !!a.photoUrl,
+          horaConfirmada,
         };
       })
       .filter(Boolean)
@@ -376,6 +380,9 @@ export default function Dashboard({ units, students, classes, attendance }) {
                     <div>
                       <div style={{ color: C.text }} className="text-sm">
                         {fmtDate(h.date)} · {h.period}
+                        {h.horaConfirmada && (
+                          <span style={{ color: C.textFaint }}> · confirmado às {h.horaConfirmada}</span>
+                        )}
                       </div>
                       <div style={{ color: C.textFaint }} className="text-xs">
                         {h.teacherName} · {h.unitName}
