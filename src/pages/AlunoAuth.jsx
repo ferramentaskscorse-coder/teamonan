@@ -40,7 +40,14 @@ export default function AlunoAuth({ onBack }) {
     setError("");
     try {
       const entry = await getCpfIndexEntry(loginCpf);
-      if (entry && !entry.authEmail) {
+      if (!entry) {
+        // esse CPF nunca apareceu no sistema — não é caso de senha errada,
+        // é caso de nunca ter se cadastrado.
+        setError('Cadastro não encontrado para esse CPF. Use a aba "Criar cadastro".');
+        setBusy(false);
+        return;
+      }
+      if (!entry.authEmail) {
         // tem cadastro (feito pela equipe), mas ninguém criou login ainda —
         // isso vale mesmo que a pessoa não tenha digitado nada em "senha"
         // (ela não teria mesmo, já que ainda não existe uma).
