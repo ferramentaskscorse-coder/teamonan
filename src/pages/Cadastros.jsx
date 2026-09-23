@@ -27,6 +27,7 @@ export default function Cadastros({ units, students }) {
           ["unidades", "Unidades"],
           ["pessoas", "Alunos e Professores"],
           ["aprovacoes", `Aprovações${pendentesCount ? ` (${pendentesCount})` : ""}`],
+          ["termos", "Termos"],
           ["manutencao", "Manutenção"],
         ].map(([key, label]) => (
           <button
@@ -43,6 +44,7 @@ export default function Cadastros({ units, students }) {
       {tab === "unidades" && <UnitList units={units} />}
       {tab === "pessoas" && <PeopleList units={units} students={students} />}
       {tab === "aprovacoes" && <Aprovacoes students={students} units={units} />}
+      {tab === "termos" && <Termos students={students} />}
       {tab === "manutencao" && <Manutencao students={students} />}
     </div>
   );
@@ -91,6 +93,73 @@ function Aprovacoes({ students, units }) {
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+function Termos({ students }) {
+  const aceitaram = students
+    .filter((s) => s.termosAceitos)
+    .map((s) => ({
+      id: s.id,
+      name: s.name || "(sem nome)",
+      cpf: s.cpf || "",
+      tipo: s.tipo,
+      quando: s.termosAceitosEm?.toDate ? s.termosAceitosEm.toDate() : null,
+    }))
+    .sort((a, b) => (b.quando?.getTime() || 0) - (a.quando?.getTime() || 0));
+  const naoAceitaram = students.filter((s) => !s.termosAceitos);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div style={{ color: C.textDim }} className="text-xs leading-relaxed">
+        Registro de quem já aceitou o termo de responsabilidade e uso de imagem pelo app, com data e hora (do servidor,
+        não do celular da pessoa — não dá pra falsificar).
+      </div>
+      <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md overflow-hidden">
+        {aceitaram.length === 0 && (
+          <div style={{ color: C.textFaint }} className="text-sm px-4 py-6 text-center">
+            Ninguém aceitou o termo pelo app ainda.
+          </div>
+        )}
+        {aceitaram.map((s) => (
+          <div key={s.id} style={{ borderColor: C.lineSoft }} className="border-b last:border-0 flex items-center justify-between px-4 py-2.5 gap-2">
+            <div className="min-w-0">
+              <div style={{ color: C.text }} className="text-sm truncate">
+                {s.name}
+                <span style={{ color: s.tipo === "professor" ? C.brass : C.textFaint }} className="text-xs ml-2">
+                  {s.tipo === "professor" ? "Professor" : "Aluno"}
+                </span>
+              </div>
+              {s.cpf && (
+                <div style={{ color: C.textFaint }} className="text-xs truncate">
+                  {s.cpf}
+                </div>
+              )}
+            </div>
+            <div style={{ color: C.oliveBright }} className="text-xs text-right shrink-0">
+              {s.quando
+                ? `${fmtDate(s.quando.toISOString().slice(0, 10))} às ${s.quando.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                : "—"}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {naoAceitaram.length > 0 && (
+        <div>
+          <div style={{ color: C.textFaint }} className="text-xs font-medium mb-2">
+            Ainda sem aceite registrado ({naoAceitaram.length}) — geralmente cadastros feitos direto pela equipe.
+          </div>
+          <div style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md overflow-hidden">
+            {naoAceitaram.map((s) => (
+              <div key={s.id} style={{ borderColor: C.lineSoft, color: C.textFaint }} className="border-b last:border-0 px-4 py-2 text-xs truncate">
+                {s.name || "(sem nome)"}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -590,6 +659,17 @@ function PeopleList({ units, students }) {
                 {s.periodo ? ` · ${s.periodo}` : ""}
                 {s.grau ? ` · ${s.grau}` : ""}
                 {s.cpf ? ` · ${s.cpf}` : ""}
+              </div>
+              <div style={{ color: s.termosAceitos ? C.oliveBright : C.textFaint }} className="text-xs truncate">
+                {s.termosAceitos
+                  ? `Termo aceito${
+                      s.termosAceitosEm?.toDate
+                        ? ` em ${fmtDate(s.termosAceitosEm.toDate().toISOString().slice(0, 10))} às ${s.termosAceitosEm
+                            .toDate()
+                            .toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                        : ""
+                    }`
+                  : "Termo não aceito"}
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">

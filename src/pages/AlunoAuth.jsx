@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { collection, onSnapshot, getDocs, addDoc, updateDoc, doc } from "firebase/firestore";
+import { collection, onSnapshot, getDocs, addDoc, updateDoc, doc, serverTimestamp } from "firebase/firestore";
 import { updateEmail } from "firebase/auth";
 import { signUpAluno, loginAluno, setCpfIndex, requestPasswordReset, cpfToEmail, getCpfIndexEntry, claimExistingStudent, db } from "../firebase";
 import { C, PERIODS, GRAUS, tipoFromGrau } from "../theme";
-import { Select, FieldLabel } from "../ui";
+import { Select, FieldLabel, TermoAceite } from "../ui";
 import logo from "../assets/logo.jpg";
 
 function normalizeCpf(cpf) {
@@ -75,6 +75,7 @@ export default function AlunoAuth({ onBack }) {
   const [claimSenha, setClaimSenha] = useState("");
   const [claimConfirmSenha, setClaimConfirmSenha] = useState("");
   const [claimEmail, setClaimEmail] = useState("");
+  const [claimAceite, setClaimAceite] = useState(false);
 
   async function handleClaim(e) {
     e.preventDefault();
@@ -85,6 +86,10 @@ export default function AlunoAuth({ onBack }) {
     }
     if (claimSenha !== claimConfirmSenha) {
       setError("As senhas não conferem.");
+      return;
+    }
+    if (!claimAceite) {
+      setError("Você precisa aceitar o termo para continuar.");
       return;
     }
     setBusy(true);
@@ -139,6 +144,7 @@ export default function AlunoAuth({ onBack }) {
   const [unitId, setUnitId] = useState("");
   const [periodo, setPeriodo] = useState("");
   const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [signupAceite, setSignupAceite] = useState(false);
   const isProfessor = tipoFromGrau(grau) === "professor";
 
   async function handleSignup(e) {
@@ -158,6 +164,10 @@ export default function AlunoAuth({ onBack }) {
     }
     if (senha !== confirmSenha) {
       setError("As senhas não conferem.");
+      return;
+    }
+    if (!signupAceite) {
+      setError("Você precisa aceitar o termo para continuar.");
       return;
     }
 
@@ -196,11 +206,20 @@ export default function AlunoAuth({ onBack }) {
 
       if (existing) {
         // cadastro já feito pela equipe antes — já é confiável, não mexe no status
-        await updateDoc(doc(db, "students", existing.id), payload);
+        await updateDoc(doc(db, "students", existing.id), {
+          ...payload,
+          termosAceitos: true,
+          termosAceitosEm: serverTimestamp(),
+        });
       } else {
         // autocadastro novo, ninguém da equipe viu ainda — fica pendente até
         // um professor ou administrador aprovar
-        await addDoc(collection(db, "students"), { ...payload, status: "pendente" });
+        await addDoc(collection(db, "students"), {
+          ...payload,
+          status: "pendente",
+          termosAceitos: true,
+          termosAceitosEm: serverTimestamp(),
+        });
       }
 
       // Índice CPF -> e-mail (usado só para login/recuperação de senha). Se
@@ -365,6 +384,7 @@ export default function AlunoAuth({ onBack }) {
                 className="border rounded-md px-3 py-2 text-sm outline-none w-full"
               />
             </div>
+            <TermoAceite checked={claimAceite} onChange={setClaimAceite} />
             {error && (
               <div style={{ color: C.red }} className="text-xs">
                 {error}
@@ -454,6 +474,7 @@ export default function AlunoAuth({ onBack }) {
                 className="border rounded-md px-3 py-2 text-sm outline-none w-full"
               />
             </div>
+            <TermoAceite checked={signupAceite} onChange={setSignupAceite} />
             {error && (
               <div style={{ color: C.red }} className="text-xs">
                 {error}

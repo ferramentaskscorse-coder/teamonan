@@ -1,4 +1,4 @@
-import { C } from "./theme";
+import { C, TERMO_TEXTO } from "./theme";
 
 export function NavTab({ active, onClick, icon: Icon, children }) {
   return (
@@ -96,6 +96,30 @@ export function SectionTitle({ children }) {
   return (
     <div style={{ color: C.text }} className="text-sm font-semibold mb-2">
       {children}
+    </div>
+  );
+}
+
+export function TermoAceite({ checked, onChange }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div
+        style={{ background: C.bgRaised, borderColor: C.line, color: C.textDim, maxHeight: 160 }}
+        className="border rounded-md p-3 text-xs leading-relaxed whitespace-pre-wrap overflow-y-auto"
+      >
+        {TERMO_TEXTO}
+      </div>
+      <label className="flex items-start gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="mt-0.5 shrink-0"
+        />
+        <span style={{ color: C.textDim }} className="text-xs">
+          Li e aceito o termo de responsabilidade e autorização de uso de imagem acima.
+        </span>
+      </label>
     </div>
   );
 }

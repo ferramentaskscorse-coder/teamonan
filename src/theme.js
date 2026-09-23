@@ -16,6 +16,26 @@ export const C = {
   brass: "#BB8C43",
 };
 
+export const TERMO_TEXTO = `TERMO DE RESPONSABILIDADE E AUTORIZAÇÃO DE USO DE IMAGEM
+
+Eu declaro, para os devidos fins, que:
+
+1. TERMO DE RESPONSABILIDADE:
+1. Estou ciente de que a prática de atividades físicas envolve riscos inerentes, podendo ocasionar lesões leves, moderadas ou graves.
+2. Declaro que me encontro em condições físicas e de saúde adequadas para a prática das atividades propostas, estando apto(a) a realizar treinos físicos, isentando o(a) profissional, academia ou instituição de qualquer responsabilidade por problemas de saúde decorrentes de omissões de informações médicas relevantes.
+3. Comprometo-me a respeitar as orientações técnicas, normas de segurança e recomendações fornecidas pelo profissional responsável durante os treinos.
+4. Assumo total responsabilidade por quaisquer danos físicos, emocionais ou materiais que possam ocorrer em decorrência da minha participação nas atividades.
+
+2. AUTORIZAÇÃO DE USO DE IMAGEM:
+5. Autorizo, de forma gratuita, definitiva e irrevogável, o uso da minha imagem, voz e nome, captados durante treinos, aulas, eventos ou atividades relacionadas, para fins institucionais, promocionais e publicitários.
+6. A autorização abrange a veiculação do material em mídias impressas, digitais, redes sociais, sites, vídeos e demais meios de comunicação no Brasil e no exterior.
+7. Declaro estar ciente de que não haverá qualquer compensação financeira pelo uso da imagem.
+
+3. DISPOSIÇÕES GERAIS:
+8. Este termo tem validade por prazo indeterminado, a partir da data de sua assinatura (o aceite eletrônico abaixo, com CPF e data/hora registrados pelo sistema).
+
+Declaro que li e compreendi todas as cláusulas deste termo, estando de pleno acordo com seu conteúdo.`;
+
 export const PERIODS = ["Manhã", "Tarde", "Noite"];
 
 export const GRAUS = [

@@ -3,7 +3,7 @@ import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimest
 import { Camera, Check, LogOut, Pencil, AlertTriangle, Loader2, Users, Clock } from "lucide-react";
 import { db, auth, logoutAny } from "../firebase";
 import { C, PERIODS, GRAUS, tipoFromGrau, fmtDate, todayISO, grauEdicaoLiberada } from "../theme";
-import { Select, FieldLabel, Modal } from "../ui";
+import { Select, FieldLabel, Modal, TermoAceite } from "../ui";
 import logo from "../assets/logo.jpg";
 
 // Reduz a foto para uma miniatura leve (JPEG, lado máximo 480px) e devolve
@@ -127,6 +127,7 @@ function CompleteCadastro({ units, onLogout }) {
   const [unitId, setUnitId] = useState("");
   const [periodo, setPeriodo] = useState("");
   const [grau, setGrau] = useState("");
+  const [aceite, setAceite] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const isProfessor = tipoFromGrau(grau) === "professor";
@@ -147,6 +148,10 @@ function CompleteCadastro({ units, onLogout }) {
       setError("Para aluno, unidade e período são obrigatórios.");
       return;
     }
+    if (!aceite) {
+      setError("Você precisa aceitar o termo para continuar.");
+      return;
+    }
     setBusy(true);
     try {
       await addDoc(collection(db, "students"), {
@@ -158,6 +163,8 @@ function CompleteCadastro({ units, onLogout }) {
         periodo: periodo || "",
         grau: grau || "",
         status: "pendente",
+        termosAceitos: true,
+        termosAceitosEm: serverTimestamp(),
       });
       // a tela sai sozinha assim que o onSnapshot de students encontrar
       // esse novo registro — não precisa fazer nada aqui.
@@ -215,6 +222,8 @@ function CompleteCadastro({ units, onLogout }) {
             options={PERIODS.map((p) => ({ value: p, label: p }))}
           />
         </div>
+
+        <TermoAceite checked={aceite} onChange={setAceite} />
 
         {error && (
           <div style={{ color: C.red }} className="text-xs">

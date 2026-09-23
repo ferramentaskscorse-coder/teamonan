@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import {
   getAuth,
   signInAnonymously,
@@ -106,7 +106,11 @@ export async function claimExistingStudent(studentId, cpf, senha, recoveryEmail)
       // segue com o e-mail sintético se não conseguir trocar
     }
   }
-  await updateDoc(doc(db, "students", studentId), { uid });
+  await updateDoc(doc(db, "students", studentId), {
+    uid,
+    termosAceitos: true,
+    termosAceitosEm: serverTimestamp(),
+  });
   await setCpfIndex(cpf, authEmail, uid);
   return cred;
 }
