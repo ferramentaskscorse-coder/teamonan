@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
-import { Camera, Check, LogOut, Pencil, AlertTriangle, Loader2, Users, Clock } from "lucide-react";
-import { db, auth, logoutAny } from "../firebase";
+import { Camera, Check, LogOut, Pencil, AlertTriangle, Loader2, Users, Clock, X } from "lucide-react";
+import { db, auth, logoutAny, setCpfIndex } from "../firebase";
 import { C, PERIODS, GRAUS, tipoFromGrau, fmtDate, todayISO, grauEdicaoLiberada } from "../theme";
 import { Select, FieldLabel, Modal, TermoAceite } from "../ui";
 import logo from "../assets/logo.jpg";
@@ -154,6 +154,11 @@ function CompleteCadastro({ units, onLogout }) {
     }
     setBusy(true);
     try {
+      if (cpf) {
+        // sem isso, o próximo login não acha o cadastro (era exatamente o
+        // bug que fazia essa conta ficar presa em "não encontrado" depois).
+        await setCpfIndex(cpf, auth.currentUser.email, auth.currentUser.uid);
+      }
       await addDoc(collection(db, "students"), {
         uid: auth.currentUser.uid,
         name: name.trim(),
@@ -337,10 +342,16 @@ function ProfileCard({ me, units }) {
 // ---------------------------------------------------------------------------
 function AprovacoesCard({ students, units }) {
   const pendentes = students.filter((s) => s.status === "pendente");
+  const [confirmandoRecusa, setConfirmandoRecusa] = useState(null);
   if (pendentes.length === 0) return null;
 
   async function aprovar(id) {
     await updateDoc(doc(db, "students", id), { status: "aprovado", approvedAt: serverTimestamp() });
+  }
+
+  async function recusar(id) {
+    await deleteDoc(doc(db, "students", id));
+    setConfirmandoRecusa(null);
   }
 
   return (
@@ -364,10 +375,36 @@ function AprovacoesCard({ students, units }) {
               {s.grau ? ` · ${s.grau}` : ""}
             </div>
           </div>
-          <button onClick={() => aprovar(s.id)} style={{ background: C.red, color: C.text }} className="rounded-md px-3 py-1.5 text-xs font-medium flex items-center gap-1 shrink-0">
-            <Check size={13} />
-            Aprovar
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {confirmandoRecusa === s.id ? (
+              <>
+                <span style={{ color: C.textFaint }} className="text-xs">
+                  Confirma?
+                </span>
+                <button onClick={() => recusar(s.id)} style={{ background: C.red, color: C.text }} className="rounded-md px-2 py-1.5 text-xs font-medium">
+                  Sim
+                </button>
+                <button onClick={() => setConfirmandoRecusa(null)} style={{ color: C.textFaint }} className="text-xs">
+                  Não
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setConfirmandoRecusa(s.id)}
+                  style={{ background: C.bgRaised, borderColor: C.line, color: C.textDim }}
+                  className="border rounded-md px-2.5 py-1.5 text-xs font-medium flex items-center gap-1"
+                >
+                  <X size={13} />
+                  Recusar
+                </button>
+                <button onClick={() => aprovar(s.id)} style={{ background: C.red, color: C.text }} className="rounded-md px-3 py-1.5 text-xs font-medium flex items-center gap-1">
+                  <Check size={13} />
+                  Aprovar
+                </button>
+              </>
+            )}
+          </div>
         </div>
       ))}
     </div>

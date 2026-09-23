@@ -52,16 +52,23 @@ export default function Cadastros({ units, students }) {
 
 function Aprovacoes({ students, units }) {
   const pendentes = students.filter((s) => s.status === "pendente");
+  const [confirmandoRecusa, setConfirmandoRecusa] = useState(null);
 
   async function aprovar(id) {
     await updateDoc(doc(db, "students", id), { status: "aprovado", approvedAt: serverTimestamp() });
+  }
+
+  async function recusar(id) {
+    await deleteDoc(doc(db, "students", id));
+    setConfirmandoRecusa(null);
   }
 
   return (
     <div className="flex flex-col gap-3">
       <div style={{ color: C.textDim }} className="text-xs leading-relaxed">
         Novos cadastros feitos pela própria pessoa (aluno ou professor) ficam aqui até alguém da equipe ou um professor já
-        aprovado confirmar. Quem aprovar primeiro resolve — some da lista dos dois.
+        aprovado confirmar. Quem aprovar primeiro resolve — some da lista dos dois. Recusar apaga o cadastro; a pessoa
+        continua com o login e pode preencher os dados de novo se precisar.
       </div>
       {pendentes.length === 0 && (
         <div style={{ background: C.bgPanel, borderColor: C.line, color: C.textFaint }} className="border rounded-md p-6 text-sm text-center">
@@ -83,14 +90,36 @@ function Aprovacoes({ students, units }) {
               {s.grau ? ` · ${s.grau}` : ""}
             </div>
           </div>
-          <button
-            onClick={() => aprovar(s.id)}
-            style={{ background: C.red, color: C.text }}
-            className="rounded-md px-3 py-2 text-sm font-medium flex items-center gap-1.5 shrink-0"
-          >
-            <Check size={14} />
-            Aprovar
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {confirmandoRecusa === s.id ? (
+              <>
+                <span style={{ color: C.textFaint }} className="text-xs">
+                  Confirma?
+                </span>
+                <button onClick={() => recusar(s.id)} style={{ background: C.red, color: C.text }} className="rounded-md px-2 py-2 text-xs font-medium">
+                  Sim, recusar
+                </button>
+                <button onClick={() => setConfirmandoRecusa(null)} style={{ color: C.textFaint }} className="text-xs">
+                  Cancelar
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setConfirmandoRecusa(s.id)}
+                  style={{ background: C.bgRaised, borderColor: C.line, color: C.textDim }}
+                  className="border rounded-md px-3 py-2 text-sm font-medium flex items-center gap-1.5"
+                >
+                  <X size={14} />
+                  Recusar
+                </button>
+                <button onClick={() => aprovar(s.id)} style={{ background: C.red, color: C.text }} className="rounded-md px-3 py-2 text-sm font-medium flex items-center gap-1.5">
+                  <Check size={14} />
+                  Aprovar
+                </button>
+              </>
+            )}
+          </div>
         </div>
       ))}
     </div>

@@ -40,14 +40,7 @@ export default function AlunoAuth({ onBack }) {
     setError("");
     try {
       const entry = await getCpfIndexEntry(loginCpf);
-      if (!entry) {
-        // esse CPF nunca apareceu no sistema — não é caso de senha errada,
-        // é caso de nunca ter se cadastrado.
-        setError('Cadastro não encontrado para esse CPF. Use a aba "Criar cadastro".');
-        setBusy(false);
-        return;
-      }
-      if (!entry.authEmail) {
+      if (entry && !entry.authEmail) {
         // tem cadastro (feito pela equipe), mas ninguém criou login ainda —
         // isso vale mesmo que a pessoa não tenha digitado nada em "senha"
         // (ela não teria mesmo, já que ainda não existe uma).
@@ -58,10 +51,19 @@ export default function AlunoAuth({ onBack }) {
         return;
       }
       if (!loginSenha) {
-        setError("Digite sua senha.");
+        if (!entry) {
+          // sem índice E sem senha digitada — provavelmente alguém que
+          // nunca se cadastrou mesmo (índice antigo/incompleto é raro
+          // o bastante pra não valer a pena arriscar aqui).
+          setError('Cadastro não encontrado para esse CPF. Use a aba "Criar cadastro".');
+        } else {
+          setError("Digite sua senha.");
+        }
         setBusy(false);
         return;
       }
+      // com senha digitada, sempre tenta de verdade — loginAluno cai pro
+      // e-mail sintético mesmo sem índice, cobrindo contas antigas/legadas.
       await loginAluno(loginCpf, loginSenha);
     } catch (err) {
       setError("CPF ou senha incorretos.");
