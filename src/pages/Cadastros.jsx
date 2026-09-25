@@ -2,9 +2,9 @@ import { useState, useRef } from "react";
 import { collection, addDoc, updateDoc, deleteDoc, doc, setDoc, getDoc, getDocs, serverTimestamp } from "firebase/firestore";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
-import { Plus, Trash2, Pencil, X, Mic, Upload, Loader2, AlertTriangle, Check, Clock } from "lucide-react";
+import { Plus, Trash2, Pencil, X, Mic, Upload, Loader2, AlertTriangle, Check, Clock, Camera } from "lucide-react";
 import { db } from "../firebase";
-import { C, PERIODS, GRAUS, tipoFromGrau, fmtDate, grauEdicaoLiberada, seteDiasAPartirDeHoje } from "../theme";
+import { C, PERIODS, GRAUS, tipoFromGrau, fmtDate, grauEdicaoLiberada, seteDiasAPartirDeHoje, calcularIdade, ehMenorDeIdade, compressPhoto } from "../theme";
 import { Select, Modal } from "../ui";
 
 function normalize(str) {
@@ -503,7 +503,7 @@ function SimpleList({ items, collectionName, onAdd, placeholder, allowEdit }) {
   );
 }
 
-const EMPTY_FORM = { name: "", cpf: "", unitId: "", periodo: "", grau: "" };
+const EMPTY_FORM = { name: "", cpf: "", dataNascimento: "", unitId: "", periodo: "", grau: "", responsavelNome: "" };
 
 function PeopleList({ units, students }) {
   const [form, setForm] = useState(EMPTY_FORM);
@@ -511,8 +511,23 @@ function PeopleList({ units, students }) {
   const [busy, setBusy] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [formError, setFormError] = useState("");
+  const [autorizacaoFoto, setAutorizacaoFoto] = useState(null);
+  const [comprimindo, setComprimindo] = useState(false);
 
   const isProfessor = tipoFromGrau(form.grau) === "professor";
+  const menorDeIdade = ehMenorDeIdade(form.dataNascimento);
+
+  async function handleFoto(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setComprimindo(true);
+    try {
+      setAutorizacaoFoto(await compressPhoto(file, 900, 0.7));
+    } catch (err) {
+      setFormError("Não consegui processar a foto. Tente de novo.");
+    }
+    setComprimindo(false);
+  }
 
   function setField(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -523,6 +538,7 @@ function PeopleList({ units, students }) {
     setForm(EMPTY_FORM);
     setEditingId(null);
     setFormError("");
+    setAutorizacaoFoto(null);
   }
 
   async function handleSubmit(e) {
@@ -532,11 +548,19 @@ function PeopleList({ units, students }) {
       setFormError("Preencha o nome.");
       return;
     }
+    if (!form.dataNascimento) {
+      setFormError("Preencha a data de nascimento.");
+      return;
+    }
     if (!isProfessor && (!form.unitId || !form.periodo)) {
       const faltando = [];
       if (!form.unitId) faltando.push("unidade");
       if (!form.periodo) faltando.push("período");
       setFormError(`Para aluno, falta preencher: ${faltando.join(", ")}.`);
+      return;
+    }
+    if (menorDeIdade && (!form.responsavelNome.trim() || !autorizacaoFoto)) {
+      setFormError("Para menor de idade, preencha o nome do responsável e a foto da autorização assinada.");
       return;
     }
 
@@ -545,11 +569,16 @@ function PeopleList({ units, students }) {
     const payload = {
       name: form.name.trim(),
       cpf: form.cpf.trim(),
+      dataNascimento: form.dataNascimento,
       tipo: tipoFromGrau(form.grau),
       unitId: form.unitId || "",
       periodo: form.periodo || "",
       grau: form.grau || "",
     };
+    if (menorDeIdade) {
+      payload.responsavelNome = form.responsavelNome.trim();
+      payload.autorizacaoResponsavelFoto = autorizacaoFoto;
+    }
     if (editingId) {
       await updateDoc(doc(db, "students", editingId), payload);
     } else {
@@ -571,10 +600,13 @@ function PeopleList({ units, students }) {
     setForm({
       name: s.name || "",
       cpf: s.cpf || "",
+      dataNascimento: s.dataNascimento || "",
       unitId: s.unitId || "",
       periodo: s.periodo || "",
       grau: s.grau || "",
+      responsavelNome: s.responsavelNome || "",
     });
+    setAutorizacaoFoto(s.autorizacaoResponsavelFoto || null);
     setEditingId(s.id);
     setFormError("");
   }
@@ -603,10 +635,17 @@ function PeopleList({ units, students }) {
           <input
             value={form.cpf}
             onChange={(e) => setField("cpf", e.target.value.replace(/\D/g, ""))}
-            placeholder="CPF (só números)"
+            placeholder="CPF (opcional)"
             inputMode="numeric"
             maxLength={11}
             style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+            className="border rounded-md px-3 py-2 text-sm outline-none"
+          />
+          <input
+            type="date"
+            value={form.dataNascimento}
+            onChange={(e) => setField("dataNascimento", e.target.value)}
+            style={{ background: C.bgRaised, borderColor: C.line, color: C.text, height: "38px", boxSizing: "border-box", width: "100%", maxWidth: "100%", minWidth: 0 }}
             className="border rounded-md px-3 py-2 text-sm outline-none"
           />
           <Select
@@ -633,6 +672,31 @@ function PeopleList({ units, students }) {
             ? `Grau "${form.grau}" → cadastro como ${isProfessor ? "Professor" : "Aluno"}.`
             : "Sem grau selecionado → cadastro como Aluno. Grau azul claro pra cima vira Professor automaticamente."}
         </div>
+
+        {menorDeIdade && (
+          <div style={{ background: C.bgRaised, borderColor: C.brass }} className="border rounded-md p-3 flex flex-col gap-2">
+            <div style={{ color: C.brass }} className="text-xs font-semibold">
+              Menor de 18 anos ({calcularIdade(form.dataNascimento)} anos) — precisa da autorização do responsável
+            </div>
+            <input
+              value={form.responsavelNome}
+              onChange={(e) => setField("responsavelNome", e.target.value)}
+              placeholder="Nome do responsável"
+              style={{ background: C.bgPanel, borderColor: C.line, color: C.text }}
+              className="border rounded-md px-3 py-2 text-sm outline-none"
+            />
+            <label
+              style={{ background: C.bgPanel, borderColor: C.line, color: C.textDim }}
+              className="border rounded-md px-3 py-3 text-sm flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {comprimindo ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+              {comprimindo ? "Processando..." : autorizacaoFoto ? "Trocar foto do documento" : "Foto da autorização assinada"}
+              <input type="file" accept="image/*" onChange={handleFoto} className="hidden" disabled={comprimindo} />
+            </label>
+            {autorizacaoFoto && <img src={autorizacaoFoto} alt="Autorização do responsável" className="rounded-md w-full max-h-48 object-cover" />}
+          </div>
+        )}
+
         {formError && (
           <div style={{ color: C.red }} className="text-xs -mt-1">
             {formError}
@@ -688,7 +752,14 @@ function PeopleList({ units, students }) {
                 {s.periodo ? ` · ${s.periodo}` : ""}
                 {s.grau ? ` · ${s.grau}` : ""}
                 {s.cpf ? ` · ${s.cpf}` : ""}
+                {s.dataNascimento ? ` · ${calcularIdade(s.dataNascimento)} anos` : ""}
               </div>
+              {s.responsavelNome && (
+                <div style={{ color: C.brass }} className="text-xs truncate">
+                  Responsável: {s.responsavelNome}
+                  {s.autorizacaoResponsavelFoto ? " · foto anexada" : " · sem foto"}
+                </div>
+              )}
               <div style={{ color: s.termosAceitos ? C.oliveBright : C.textFaint }} className="text-xs truncate">
                 {s.termosAceitos
                   ? `Termo aceito${
@@ -821,8 +892,9 @@ function VoiceFillButton({ units, setForm }) {
 }
 
 // ---------------------------------------------------------------------------
-// Importação em lote — CSV ou XLSX com colunas: Nome, CPF, Unidade, Periodo, Grau
-// (Tipo não é mais uma coluna — é derivado do Grau via tipoFromGrau)
+// Importação em lote — CSV ou XLSX com colunas: Nome, CPF, DataNascimento,
+// Unidade, Periodo, Grau (Tipo é derivado do Grau; menores de idade são
+// recusados aqui, pois exigem foto da autorização do responsável)
 // ---------------------------------------------------------------------------
 function ImportModal({ units, onClose }) {
   const [busy, setBusy] = useState(false);
@@ -844,6 +916,7 @@ function ImportModal({ units, onClose }) {
       const row = rows[i];
       const name = (row.Nome || row.nome || "").toString().trim();
       const cpf = (row.CPF || row.cpf || "").toString().trim();
+      const dataNascimento = (row.DataNascimento || row["Data de nascimento"] || row.dataNascimento || "").toString().trim();
       const unidadeNome = (row.Unidade || row.unidade || "").toString().trim();
       const periodoRaw = (row["Período"] || row.Periodo || row.periodo || "").toString().trim();
       const grauRaw = (row.Grau || row.grau || "").toString().trim();
@@ -852,6 +925,10 @@ function ImportModal({ units, onClose }) {
 
       if (!name) {
         errors.push(`Linha ${i + 2}: sem nome, ignorada.`);
+        continue;
+      }
+      if (dataNascimento && ehMenorDeIdade(dataNascimento)) {
+        errors.push(`Linha ${i + 2} (${name}): menor de idade — precisa ser cadastrado manualmente, com foto da autorização do responsável.`);
         continue;
       }
 
@@ -873,7 +950,7 @@ function ImportModal({ units, onClose }) {
 
       const periodo = matchPeriodo(periodoRaw);
 
-      const ref = await addDoc(collection(db, "students"), { name, cpf, tipo, unitId, periodo, grau, status: "aprovado" });
+      const ref = await addDoc(collection(db, "students"), { name, cpf, dataNascimento, tipo, unitId, periodo, grau, status: "aprovado" });
       const cpfKey = cpf.replace(/\D/g, "");
       if (cpfKey) {
         await setDoc(doc(db, "cpfIndex", cpfKey), { studentId: ref.id, authEmail: null });
@@ -911,9 +988,9 @@ function ImportModal({ units, onClose }) {
 
   function downloadTemplate() {
     const csv =
-      "Nome,CPF,Unidade,Periodo,Grau\n" +
-      "Maria Silva,000.000.000-00,Unidade Centro,Manhã,Branco\n" +
-      "Denis Onan Perez de Souza,111.111.111-11,,,Preto\n";
+      "Nome,CPF,DataNascimento,Unidade,Periodo,Grau\n" +
+      "Maria Silva,000.000.000-00,1990-05-12,Unidade Centro,Manhã,Branco\n" +
+      "Denis Onan Perez de Souza,111.111.111-11,1985-01-20,,,Preto\n";
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -930,9 +1007,11 @@ function ImportModal({ units, onClose }) {
           Importar em lote
         </div>
         <div style={{ color: C.textDim }} className="text-xs leading-relaxed">
-          Envie um arquivo .csv ou .xlsx com as colunas <strong>Nome, CPF, Unidade, Periodo, Grau</strong>.
-          O grau define automaticamente se a pessoa é Aluno ou Professor: azul claro pra cima vira Professor
-          (e nesse caso Unidade/Periodo podem ficar em branco); abaixo disso, ou sem grau, é Aluno.
+          Envie um arquivo .csv ou .xlsx com as colunas <strong>Nome, CPF, DataNascimento, Unidade, Periodo, Grau</strong>{" "}
+          (data no formato AAAA-MM-DD). O grau define automaticamente se a pessoa é Aluno ou Professor: azul claro pra
+          cima vira Professor (e nesse caso Unidade/Periodo podem ficar em branco); abaixo disso, ou sem grau, é Aluno.
+          Menores de 18 anos não entram pela planilha — precisam de cadastro manual com a foto da autorização do
+          responsável.
         </div>
         <button onClick={downloadTemplate} style={{ color: C.brass }} className="text-xs underline underline-offset-2 text-left">
           Baixar modelo .csv

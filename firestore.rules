@@ -40,7 +40,9 @@ service cloud.firestore {
     // equipe (admin) continua podendo gerenciar qualquer cadastro.
     match /students/{studentId} {
       allow read: if request.auth != null;
-      allow create: if isAdmin() || isSelf(request.resource.data.uid);
+      // Precisa ser assim (não só admin/self) porque um professor cadastra
+      // menores de idade diretamente — o menor não tem login próprio.
+      allow create: if request.auth != null;
       // Uma pessoa pode editar o PRÓPRIO cadastro, mas nunca o próprio
       // status de aprovação — isso só muda por quem aprova (a "aprovação",
       // abaixo, é uma gravação separada tocando só em status/approvedAt).

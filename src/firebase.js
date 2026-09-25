@@ -94,7 +94,7 @@ export async function loginAluno(cpf, senha) {
 // "Concluir cadastro" — para quem já tem um registro em students (feito
 // manualmente pela equipe) mas nunca criou login. Cria a conta, vincula o
 // uid ao cadastro já existente (em vez de criar um novo) e atualiza o índice.
-export async function claimExistingStudent(studentId, cpf, senha, recoveryEmail) {
+export async function claimExistingStudent(studentId, cpf, senha, recoveryEmail, dataNascimento) {
   const cred = await signUpAluno(cpf, senha);
   const uid = cred.user.uid;
   let authEmail = cpfToEmail(cpf);
@@ -108,6 +108,7 @@ export async function claimExistingStudent(studentId, cpf, senha, recoveryEmail)
   }
   await updateDoc(doc(db, "students", studentId), {
     uid,
+    dataNascimento: dataNascimento || "",
     termosAceitos: true,
     termosAceitosEm: serverTimestamp(),
   });

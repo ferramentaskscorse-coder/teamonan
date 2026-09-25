@@ -1,41 +1,10 @@
 import { useState, useEffect } from "react";
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { Camera, Check, LogOut, Pencil, AlertTriangle, Loader2, Users, Clock, X } from "lucide-react";
 import { db, auth, logoutAny, setCpfIndex } from "../firebase";
-import { C, PERIODS, GRAUS, tipoFromGrau, fmtDate, todayISO, grauEdicaoLiberada } from "../theme";
+import { C, PERIODS, GRAUS, tipoFromGrau, fmtDate, todayISO, grauEdicaoLiberada, calcularIdade, ehMenorDeIdade, compressPhoto } from "../theme";
 import { Select, FieldLabel, Modal, TermoAceite } from "../ui";
 import logo from "../assets/logo.jpg";
-
-// Reduz a foto para uma miniatura leve (JPEG, lado máximo 480px) e devolve
-// como data URL (texto), para guardar direto no Firestore sem precisar do
-// Firebase Storage (que hoje exige plano pago).
-function compressPhoto(file, maxDim = 480, quality = 0.6) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = () => {
-      img.onerror = reject;
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > height && width > maxDim) {
-          height = Math.round((height * maxDim) / width);
-          width = maxDim;
-        } else if (height > maxDim) {
-          width = Math.round((width * maxDim) / height);
-          height = maxDim;
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
 
 export default function AlunoHome({ onBack }) {
   const uid = auth.currentUser?.uid;
@@ -111,6 +80,7 @@ export default function AlunoHome({ onBack }) {
             {me.tipo === "professor" && (
               <>
                 <AprovacoesCard students={students} units={units} />
+                <CadastrarAlunoCard units={units} />
                 <TurmaCard me={me} units={units} students={students} classes={classes} attendance={attendance} />
               </>
             )}
@@ -124,6 +94,7 @@ export default function AlunoHome({ onBack }) {
 
 function CompleteCadastro({ units, onLogout }) {
   const [name, setName] = useState("");
+  const [dataNascimento, setDataNascimento] = useState("");
   const [unitId, setUnitId] = useState("");
   const [periodo, setPeriodo] = useState("");
   const [grau, setGrau] = useState("");
@@ -131,6 +102,7 @@ function CompleteCadastro({ units, onLogout }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const isProfessor = tipoFromGrau(grau) === "professor";
+  const menorDeIdade = ehMenorDeIdade(dataNascimento);
 
   // se o login foi feito por CPF, o e-mail interno da conta já traz o CPF —
   // aproveita pra não pedir de novo.
@@ -144,6 +116,11 @@ function CompleteCadastro({ units, onLogout }) {
       setError("Preencha seu nome.");
       return;
     }
+    if (!dataNascimento) {
+      setError("Preencha sua data de nascimento.");
+      return;
+    }
+    if (menorDeIdade) return;
     if (!isProfessor && (!unitId || !periodo)) {
       setError("Para aluno, unidade e período são obrigatórios.");
       return;
@@ -163,6 +140,7 @@ function CompleteCadastro({ units, onLogout }) {
         uid: auth.currentUser.uid,
         name: name.trim(),
         cpf,
+        dataNascimento,
         tipo: tipoFromGrau(grau),
         unitId: unitId || "",
         periodo: periodo || "",
@@ -207,6 +185,24 @@ function CompleteCadastro({ units, onLogout }) {
           />
         </div>
         <div>
+          <FieldLabel>Data de nascimento</FieldLabel>
+          <input
+            type="date"
+            value={dataNascimento}
+            onChange={(e) => setDataNascimento(e.target.value)}
+            style={{ background: C.bgRaised, borderColor: C.line, color: C.text, height: "42px", boxSizing: "border-box", width: "100%", maxWidth: "100%", minWidth: 0 }}
+            className="border rounded-md px-3 py-2 text-sm outline-none"
+          />
+        </div>
+
+        {menorDeIdade ? (
+          <div style={{ background: C.redDim, color: C.text }} className="rounded-md p-3 text-sm leading-relaxed">
+            Como você é menor de 18 anos, seu cadastro precisa ser feito por um professor ou pela equipe, com a
+            autorização assinada do seu responsável. Fale com eles pessoalmente — eles fazem seu cadastro completo.
+          </div>
+        ) : (
+          <>
+        <div>
           <FieldLabel>Grau</FieldLabel>
           <Select value={grau} onChange={setGrau} placeholder="Grau (ainda não definido)" options={GRAUS.map((g) => ({ value: g, label: g }))} />
           <div style={{ color: C.textFaint }} className="text-xs mt-1">
@@ -239,6 +235,8 @@ function CompleteCadastro({ units, onLogout }) {
         <button type="submit" disabled={busy} style={{ background: C.red, color: C.text }} className="rounded-md py-2 text-sm font-semibold disabled:opacity-60">
           {busy ? "Salvando..." : "Salvar cadastro"}
         </button>
+          </>
+        )}
         <button type="button" onClick={onLogout} style={{ color: C.textFaint }} className="text-xs text-center underline underline-offset-2">
           Sair
         </button>
@@ -408,6 +406,202 @@ function AprovacoesCard({ students, units }) {
         </div>
       ))}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CadastrarAlunoCard — só para professores: cadastrar alguém presencialmente.
+// É o único jeito de cadastrar um menor de 18 anos, porque ele não pode se
+// autocadastrar — precisa da autorização assinada do responsável, com foto.
+// ---------------------------------------------------------------------------
+const EMPTY_CADASTRO_FORM = { name: "", cpf: "", dataNascimento: "", unitId: "", periodo: "", grau: "", responsavelNome: "" };
+
+function CadastrarAlunoCard({ units }) {
+  const [aberto, setAberto] = useState(false);
+  const [form, setForm] = useState(EMPTY_CADASTRO_FORM);
+  const [autorizacaoFoto, setAutorizacaoFoto] = useState(null);
+  const [comprimindo, setComprimindo] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [sucesso, setSucesso] = useState("");
+
+  const isProfessor = tipoFromGrau(form.grau) === "professor";
+  const menorDeIdade = ehMenorDeIdade(form.dataNascimento);
+
+  function setField(field, value) {
+    setForm((f) => ({ ...f, [field]: value }));
+    setError("");
+  }
+
+  function resetForm() {
+    setForm(EMPTY_CADASTRO_FORM);
+    setAutorizacaoFoto(null);
+    setError("");
+  }
+
+  async function handleFoto(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setComprimindo(true);
+    try {
+      const dataUrl = await compressPhoto(file, 900, 0.7); // documento precisa ficar legível
+      setAutorizacaoFoto(dataUrl);
+    } catch (err) {
+      setError("Não consegui processar a foto. Tente de novo.");
+    }
+    setComprimindo(false);
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    setSucesso("");
+    if (!form.name.trim()) {
+      setError("Preencha o nome.");
+      return;
+    }
+    if (!form.dataNascimento) {
+      setError("Preencha a data de nascimento.");
+      return;
+    }
+    if (!isProfessor && (!form.unitId || !form.periodo)) {
+      setError("Para aluno, unidade e período são obrigatórios.");
+      return;
+    }
+    if (menorDeIdade && (!form.responsavelNome.trim() || !autorizacaoFoto)) {
+      setError("Para menor de idade, preencha o nome do responsável e a foto da autorização assinada.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const payload = {
+        name: form.name.trim(),
+        cpf: form.cpf.trim(),
+        dataNascimento: form.dataNascimento,
+        tipo: tipoFromGrau(form.grau),
+        unitId: form.unitId || "",
+        periodo: form.periodo || "",
+        grau: form.grau || "",
+        status: "aprovado", // professor cadastrando pessoalmente já é confiável
+      };
+      if (menorDeIdade) {
+        payload.responsavelNome = form.responsavelNome.trim();
+        payload.autorizacaoResponsavelFoto = autorizacaoFoto;
+      }
+      const ref = await addDoc(collection(db, "students"), payload);
+      const cpfKey = payload.cpf.replace(/\D/g, "");
+      if (cpfKey) {
+        // mesmo padrão do cadastro pelo admin: sem login ainda, então
+        // authEmail fica nulo e o que aponta pro cadastro é o studentId.
+        await setDoc(doc(db, "cpfIndex", cpfKey), { studentId: ref.id, authEmail: null }).catch(() => {});
+      }
+      setSucesso(`${payload.name} cadastrado(a) com sucesso.`);
+      resetForm();
+    } catch (err) {
+      setError("Não consegui salvar o cadastro. Tente de novo.");
+    }
+    setBusy(false);
+  }
+
+  if (!aberto) {
+    return (
+      <button
+        onClick={() => setAberto(true)}
+        style={{ background: C.bgPanel, borderColor: C.line, color: C.textDim }}
+        className="border rounded-md p-4 text-sm font-medium text-left flex items-center gap-2"
+      >
+        <Users size={16} />
+        Cadastrar aluno presencialmente
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} style={{ background: C.bgPanel, borderColor: C.line }} className="border rounded-md p-4 flex flex-col gap-2">
+      <div style={{ color: C.text }} className="font-semibold text-sm flex items-center justify-between">
+        Cadastrar aluno presencialmente
+        <button type="button" onClick={() => setAberto(false)} style={{ color: C.textFaint }}>
+          <X size={16} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <input
+          value={form.name}
+          onChange={(e) => setField("name", e.target.value)}
+          placeholder="Nome"
+          style={{ background: C.bgRaised, borderColor: C.line, color: C.text, height: "42px", boxSizing: "border-box" }}
+          className="border rounded-md px-3 py-2 text-sm outline-none"
+        />
+        <input
+          value={form.cpf}
+          onChange={(e) => setField("cpf", e.target.value.replace(/\D/g, ""))}
+          placeholder="CPF (opcional)"
+          inputMode="numeric"
+          maxLength={11}
+          style={{ background: C.bgRaised, borderColor: C.line, color: C.text, height: "42px", boxSizing: "border-box" }}
+          className="border rounded-md px-3 py-2 text-sm outline-none"
+        />
+      </div>
+
+      <div>
+        <FieldLabel>Data de nascimento</FieldLabel>
+        <input
+          type="date"
+          value={form.dataNascimento}
+          onChange={(e) => setField("dataNascimento", e.target.value)}
+          style={{ background: C.bgRaised, borderColor: C.line, color: C.text, height: "42px", boxSizing: "border-box", width: "100%", maxWidth: "100%", minWidth: 0 }}
+          className="border rounded-md px-3 py-2 text-sm outline-none"
+        />
+      </div>
+
+      <Select value={form.grau} onChange={(v) => setField("grau", v)} placeholder="Grau (ainda não definido)" options={GRAUS.map((g) => ({ value: g, label: g }))} />
+
+      <div className="grid grid-cols-2 gap-2">
+        <Select value={form.unitId} onChange={(v) => setField("unitId", v)} placeholder={isProfessor ? "Unidade (opcional)" : "Unidade"} options={units.map((u) => ({ value: u.id, label: u.name }))} />
+        <Select value={form.periodo} onChange={(v) => setField("periodo", v)} placeholder={isProfessor ? "Período (opcional)" : "Período"} options={PERIODS.map((p) => ({ value: p, label: p }))} />
+      </div>
+
+      {menorDeIdade && (
+        <div style={{ background: C.bgRaised, borderColor: C.brass }} className="border rounded-md p-3 flex flex-col gap-2">
+          <div style={{ color: C.brass }} className="text-xs font-semibold">
+            Menor de 18 anos — precisa da autorização do responsável
+          </div>
+          <input
+            value={form.responsavelNome}
+            onChange={(e) => setField("responsavelNome", e.target.value)}
+            placeholder="Nome do responsável"
+            style={{ background: C.bgPanel, borderColor: C.line, color: C.text }}
+            className="border rounded-md px-3 py-2 text-sm outline-none"
+          />
+          <label
+            style={{ background: C.bgPanel, borderColor: C.line, color: C.textDim }}
+            className="border rounded-md px-3 py-3 text-sm flex items-center justify-center gap-2 cursor-pointer"
+          >
+            {comprimindo ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+            {comprimindo ? "Processando..." : autorizacaoFoto ? "Trocar foto do documento" : "Foto da autorização assinada"}
+            <input type="file" accept="image/*" onChange={handleFoto} className="hidden" disabled={comprimindo} />
+          </label>
+          {autorizacaoFoto && <img src={autorizacaoFoto} alt="Autorização do responsável" className="rounded-md w-full max-h-48 object-cover" />}
+        </div>
+      )}
+
+      {error && (
+        <div style={{ color: C.red }} className="text-xs">
+          {error}
+        </div>
+      )}
+      {sucesso && (
+        <div style={{ color: C.oliveBright }} className="text-xs">
+          {sucesso}
+        </div>
+      )}
+
+      <button type="submit" disabled={busy} style={{ background: C.red, color: C.text }} className="rounded-md py-2 text-sm font-semibold disabled:opacity-60">
+        {busy ? "Salvando..." : "Cadastrar"}
+      </button>
+    </form>
   );
 }
 

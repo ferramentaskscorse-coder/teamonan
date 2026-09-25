@@ -76,6 +76,53 @@ export function seteDiasAPartirDeHoje() {
   return d.toISOString().slice(0, 10);
 }
 
+export function calcularIdade(dataNascimento) {
+  if (!dataNascimento) return null;
+  const hoje = new Date();
+  const nasc = new Date(dataNascimento + "T00:00:00");
+  let idade = hoje.getFullYear() - nasc.getFullYear();
+  const m = hoje.getMonth() - nasc.getMonth();
+  if (m < 0 || (m === 0 && hoje.getDate() < nasc.getDate())) idade--;
+  return idade;
+}
+
+export function ehMenorDeIdade(dataNascimento) {
+  const idade = calcularIdade(dataNascimento);
+  return idade !== null && idade < 18;
+}
+
+// Reduz uma foto para uma miniatura leve (JPEG, lado máximo 480px) e devolve
+// como data URL (texto), pra guardar direto no Firestore sem precisar de
+// Storage. Usada tanto pra foto de presença quanto pra foto da autorização
+// assinada do responsável de um menor de idade.
+export function compressPhoto(file, maxDim = 480, quality = 0.6) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      img.onerror = reject;
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export function fmtDate(iso) {
   if (!iso) return "";
   const [y, m, d] = iso.split("-");
