@@ -75,7 +75,6 @@ export default function AlunoAuth({ onBack }) {
   const [claimStudentId, setClaimStudentId] = useState(null);
   const [claimCpf, setClaimCpf] = useState("");
   const [claimDataNascimento, setClaimDataNascimento] = useState("");
-  const claimMenorDeIdade = ehMenorDeIdade(claimDataNascimento);
   const [claimSenha, setClaimSenha] = useState("");
   const [claimConfirmSenha, setClaimConfirmSenha] = useState("");
   const [claimEmail, setClaimEmail] = useState("");
@@ -88,7 +87,11 @@ export default function AlunoAuth({ onBack }) {
       setError("Preencha a data de nascimento.");
       return;
     }
-    if (claimMenorDeIdade) return;
+    // Diferente do autocadastro do zero: aqui o cadastro já existe, feito
+    // por um professor/admin — se for menor, a autorização do responsável
+    // (com foto) já foi coletada na hora desse cadastro. Por isso não
+    // bloqueia por idade aqui, só no "Criar cadastro" (onde ninguém colheu
+    // autorização nenhuma).
     if (claimSenha.length < 6) {
       setError("A senha precisa ter pelo menos 6 caracteres.");
       return;
@@ -381,55 +384,46 @@ export default function AlunoAuth({ onBack }) {
               />
             </div>
 
-            {claimMenorDeIdade ? (
-              <div style={{ background: C.redDim, color: C.text }} className="rounded-md p-3 text-sm leading-relaxed">
-                Como você é menor de 18 anos, seu login precisa ser criado por um professor ou pela equipe, com a
-                autorização assinada do seu responsável. Fale com eles pessoalmente.
+            <div>
+              <FieldLabel>Senha (mínimo 6 caracteres)</FieldLabel>
+              <input
+                type="password"
+                value={claimSenha}
+                onChange={(e) => setClaimSenha(e.target.value)}
+                style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+                className="border rounded-md px-3 py-2 text-sm outline-none w-full"
+              />
+            </div>
+            <div>
+              <FieldLabel>Confirmar senha</FieldLabel>
+              <input
+                type="password"
+                value={claimConfirmSenha}
+                onChange={(e) => setClaimConfirmSenha(e.target.value)}
+                style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+                className="border rounded-md px-3 py-2 text-sm outline-none w-full"
+              />
+            </div>
+            <div>
+              <FieldLabel>E-mail de recuperação (opcional)</FieldLabel>
+              <input
+                type="email"
+                value={claimEmail}
+                onChange={(e) => setClaimEmail(e.target.value)}
+                placeholder="Só é usado se você esquecer a senha"
+                style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
+                className="border rounded-md px-3 py-2 text-sm outline-none w-full"
+              />
+            </div>
+            <TermoAceite checked={claimAceite} onChange={setClaimAceite} />
+            {error && (
+              <div style={{ color: C.red }} className="text-xs">
+                {error}
               </div>
-            ) : (
-              <>
-                <div>
-                  <FieldLabel>Senha (mínimo 6 caracteres)</FieldLabel>
-                  <input
-                    type="password"
-                    value={claimSenha}
-                    onChange={(e) => setClaimSenha(e.target.value)}
-                    style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
-                    className="border rounded-md px-3 py-2 text-sm outline-none w-full"
-                  />
-                </div>
-                <div>
-                  <FieldLabel>Confirmar senha</FieldLabel>
-                  <input
-                    type="password"
-                    value={claimConfirmSenha}
-                    onChange={(e) => setClaimConfirmSenha(e.target.value)}
-                    style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
-                    className="border rounded-md px-3 py-2 text-sm outline-none w-full"
-                  />
-                </div>
-                <div>
-                  <FieldLabel>E-mail de recuperação (opcional)</FieldLabel>
-                  <input
-                    type="email"
-                    value={claimEmail}
-                    onChange={(e) => setClaimEmail(e.target.value)}
-                    placeholder="Só é usado se você esquecer a senha"
-                    style={{ background: C.bgRaised, borderColor: C.line, color: C.text }}
-                    className="border rounded-md px-3 py-2 text-sm outline-none w-full"
-                  />
-                </div>
-                <TermoAceite checked={claimAceite} onChange={setClaimAceite} />
-                {error && (
-                  <div style={{ color: C.red }} className="text-xs">
-                    {error}
-                  </div>
-                )}
-                <button type="submit" disabled={busy} style={{ background: C.red, color: C.text }} className="rounded-md py-2 text-sm font-semibold disabled:opacity-60">
-                  Concluir cadastro
-                </button>
-              </>
             )}
+            <button type="submit" disabled={busy} style={{ background: C.red, color: C.text }} className="rounded-md py-2 text-sm font-semibold disabled:opacity-60">
+              Concluir cadastro
+            </button>
             <button type="button" onClick={() => switchMode("login")} style={{ color: C.textFaint }} className="text-xs text-center underline underline-offset-2">
               Voltar para o login
             </button>
